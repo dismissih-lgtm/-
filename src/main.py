@@ -1,21 +1,31 @@
-"""주제 하나로 이미지 생성 → 캡션 생성 → 인스타그램 업로드까지 한 번에 실행.
+"""게시물 자동 생성·업로드 파이프라인.
 
 사용 예시:
+    # 주제를 직접 입력
     python -m src.main "가을 감성 카페 신메뉴 홍보"
-    python -m src.main "주말 등산 모임 후기" --dry-run
+
+    # 오늘의 뉴스를 검색해서 게시물 생성
+    python -m src.main --news
+
+    # 업로드 없이 이미지·캡션만 미리보기
+    python -m src.main --news --dry-run
 """
 
 import argparse
 import sys
 
-from . import caption_generator, image_generator, instagram_publisher
+from . import caption_generator, image_generator, instagram_publisher, news_fetcher
 
 
-def run(topic: str, dry_run: bool = False) -> None:
-    print(f"📝 주제: {topic}\n")
+def run(topic: str, dry_run: bool = False, image_topic: str | None = None) -> None:
+    """topic(캡션 재료)과 image_topic(이미지 프롬프트)으로 한 건을 게시합니다.
+
+    image_topic 을 따로 주지 않으면 topic 을 이미지에도 사용합니다.
+    """
+    image_topic = image_topic or topic
 
     print("🎨 이미지 생성 중...")
-    image_url = image_generator.generate_image(topic)
+    image_url = image_generator.generate_image(image_topic)
     print(f"   완료: {image_url}\n")
 
     print("✍️  캡션/해시태그 생성 중...")
@@ -32,11 +42,33 @@ def run(topic: str, dry_run: bool = False) -> None:
     print(f"✅ 업로드 완료! 게시물 ID: {post_id}")
 
 
+def run_news(dry_run: bool = False) -> None:
+    """오늘의 뉴스를 검색해 게시물을 만듭니다."""
+    print("📰 오늘의 뉴스 검색 중...")
+    news = news_fetcher.fetch_top_news()
+    headline = news["headline"]
+    summary = news["summary"]
+    print(f"   헤드라인: {headline}")
+    print(f"   요약: {summary}\n")
+
+    # 이미지는 짧은 헤드라인으로, 캡션은 풍부한 요약으로 생성
+    run(topic=summary, dry_run=dry_run, image_topic=headline)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="인스타그램 게시물 자동 생성·업로드"
     )
-    parser.add_argument("topic", help="게시물 주제")
+    parser.add_argument(
+        "topic",
+        nargs="?",
+        help="게시물 주제 (생략하고 --news 를 쓰면 오늘의 뉴스로 생성)",
+    )
+    parser.add_argument(
+        "--news",
+        action="store_true",
+        help="오늘의 뉴스를 검색해 게시물 생성",
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -45,7 +77,12 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
-        run(args.topic, dry_run=args.dry_run)
+        if args.news:
+            run_news(dry_run=args.dry_run)
+        elif args.topic:
+            run(args.topic, dry_run=args.dry_run)
+        else:
+            parser.error("주제를 입력하거나 --news 옵션을 사용하세요.")
     except Exception as exc:  # noqa: BLE001 - 최상위에서 사용자 친화적 메시지로 종료
         print(f"\n❌ 오류: {exc}", file=sys.stderr)
         sys.exit(1)

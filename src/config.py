@@ -27,3 +27,6 @@ GRAPH_API_VERSION = os.getenv("GRAPH_API_VERSION", "v21.0")
 
 # 캡션 생성에 사용할 Claude 모델
 CAPTION_MODEL = "claude-opus-4-8"
+
+# 뉴스 검색어 (원하는 주제·카테고리로 바꿀 수 있습니다)
+NEWS_QUERY = os.getenv("NEWS_QUERY", "오늘의 한국 주요 뉴스 헤드라인")

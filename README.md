@@ -5,6 +5,8 @@
 
 - 🎨 이미지: OpenAI **DALL·E 3**
 - ✍️ 캡션·해시태그: **Claude** (`claude-opus-4-8`)
+- 📰 뉴스 검색: **Claude 내장 web_search** (추가 API 키 불필요)
+- ⏰ 자동 실행: 매일 **한국 시간 오전 6시** 뉴스 게시물 생성
 - 📤 업로드: **Instagram Graph API** (공식, 계정 정지 위험 없음)
 
 ---
@@ -65,16 +67,51 @@ python -m src.main "가을 감성 카페 신메뉴 홍보"
 
 ---
 
-## 5. 정기 자동 업로드 (선택)
+## 5. 오늘의 뉴스로 자동 게시
 
-cron으로 매일 정해진 시간에 자동 실행할 수 있습니다. 예) 매일 오전 9시:
+주제를 직접 정하지 않고, **오늘의 뉴스를 검색해서** 게시물을 만들 수 있습니다.
 
-```cron
-0 9 * * * cd /path/to/project && /usr/bin/python -m src.main "오늘의 추천 메뉴" >> output/cron.log 2>&1
+```bash
+python -m src.main --news --dry-run   # 미리보기 (업로드 안 함)
+python -m src.main --news             # 실제 업로드
 ```
 
-주제를 매번 바꾸고 싶다면, 주제 목록 파일에서 무작위로 뽑거나 날짜별 주제를
-정하도록 `src/main.py` 를 응용하면 됩니다.
+검색 주제를 바꾸려면 `.env` 의 `NEWS_QUERY` 를 수정하세요.
+예: `NEWS_QUERY=오늘의 IT 기술 뉴스`
+
+---
+
+## 6. 매일 한국 시간 오전 6시 자동 실행
+
+### 방법 A — 내장 스케줄러 (간단)
+
+```bash
+python -m src.scheduler            # 매일 KST 06:00 에 뉴스 게시물 생성
+python -m src.scheduler --hour 7   # 시각 변경
+python -m src.scheduler --dry-run  # 테스트
+```
+
+이 프로세스가 계속 떠 있어야 동작합니다. 백그라운드 유지 예시:
+
+```bash
+nohup python -m src.scheduler >> output/scheduler.log 2>&1 &
+```
+
+### 방법 B — cron (서버에 권장)
+
+한국 시간은 UTC+9 고정(서머타임 없음)이라 **KST 06:00 = UTC 21:00** 입니다.
+
+서버 시계가 **UTC** 인 경우:
+
+```cron
+0 21 * * * cd /path/to/project && /usr/bin/python -m src.main --news >> output/cron.log 2>&1
+```
+
+서버 시계가 **KST** 인 경우:
+
+```cron
+0 6 * * * cd /path/to/project && /usr/bin/python -m src.main --news >> output/cron.log 2>&1
+```
 
 ---
 
@@ -86,7 +123,9 @@ cron으로 매일 정해진 시간에 자동 실행할 수 있습니다. 예) �
 │   ├── config.py              # 환경 변수 로딩
 │   ├── image_generator.py     # DALL·E 3 이미지 생성
 │   ├── caption_generator.py   # Claude 캡션·해시태그 생성
+│   ├── news_fetcher.py        # Claude web_search 로 오늘의 뉴스 검색
 │   ├── instagram_publisher.py # Graph API 업로드 (컨테이너 생성 → 발행)
+│   ├── scheduler.py           # 매일 KST 06:00 자동 실행
 │   └── main.py                # 전체 흐름 오케스트레이션
 ├── requirements.txt
 ├── .env.example
