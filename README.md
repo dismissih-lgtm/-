@@ -27,9 +27,13 @@
    - `pages_read_engagement`
 6. **IG_USER_ID**(페이지에 연결된 인스타그램 비즈니스 계정 ID) 확인
 
-> 💡 토큰 발급과 IG_USER_ID 확인은 [Graph API Explorer](https://developers.facebook.com/tools/explorer/)
-> 에서 할 수 있습니다. 자세한 흐름은 Meta 공식 문서
-> ["Content Publishing"](https://developers.facebook.com/docs/instagram-api/guides/content-publishing) 참고.
+> 📖 **토큰 발급과 IG_USER_ID 확인은 [SETUP_INSTAGRAM.md](SETUP_INSTAGRAM.md) 에
+> 단계별로 정리해 두었습니다.** 헷갈리는 마지막 단계(장기 토큰 변환 + IG_USER_ID 조회)는
+> 도우미 스크립트가 자동으로 해줍니다:
+>
+> ```bash
+> python get_credentials.py --app-id <앱ID> --app-secret <앱시크릿> --token <짧은수명토큰>
+> ```
 
 ### (B) API 키
 
