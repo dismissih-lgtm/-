@@ -11,7 +11,10 @@ import anthropic
 
 from . import config, settings
 
-client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+
+def _client() -> anthropic.Anthropic:
+    return anthropic.Anthropic(api_key=config.require("ANTHROPIC_API_KEY"))
+
 
 # web_search 는 Anthropic이 서버에서 실행하는 도구입니다 (GA).
 _TOOLS = [{"type": "web_search_20260209", "name": "web_search"}]
@@ -46,6 +49,7 @@ def fetch_top_news(query: str | None = None) -> dict:
     messages = [{"role": "user", "content": prompt}]
 
     # web_search 가 서버측 반복 한도에 걸리면 pause_turn 으로 끊길 수 있어 이어서 호출.
+    client = _client()
     response = None
     for _ in range(5):
         response = client.messages.create(

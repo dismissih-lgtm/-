@@ -10,10 +10,11 @@ from pathlib import Path
 _PATH = Path(__file__).resolve().parent.parent / "settings.json"
 
 DEFAULTS = {
-    "schedule_enabled": True,  # 매일 자동 게시 켜기/끄기
+    "schedule_enabled": True,  # 매일 자동 실행 켜기/끄기
     "schedule_hour": 6,        # 실행 시각(시, KST)
     "schedule_minute": 0,      # 실행 시각(분)
     "news_query": "",          # 비우면 config.NEWS_QUERY 기본값 사용
+    "destination": "kakao",    # 전송 대상: "kakao" 또는 "instagram"
 }
 
 

@@ -1,13 +1,18 @@
-# 인스타그램 게시물 자동 생성·업로드 봇
+# 뉴스 인스타 게시물 자동 생성 봇
 
-주제 한 줄만 입력하면 **AI가 이미지와 캡션·해시태그를 자동 생성**하고,
-**Instagram Graph API(공식 API)** 로 게시물을 업로드합니다.
+매일 정해진 시간에 **뉴스를 검색**해 AI가 **이미지 + 캡션·해시태그를 자동 생성**하고,
+**카카오톡으로 받거나** **인스타그램에 바로 업로드**합니다.
 
 - 🎨 이미지: OpenAI **DALL·E 3**
 - ✍️ 캡션·해시태그: **Claude** (`claude-opus-4-8`)
 - 📰 뉴스 검색: **Claude 내장 web_search** (추가 API 키 불필요)
-- ⏰ 자동 실행: 매일 **한국 시간 오전 6시** 뉴스 게시물 생성
-- 📤 업로드: **Instagram Graph API** (공식, 계정 정지 위험 없음)
+- ⏰ 자동 실행: 매일 **한국 시간 오전 6시** (시간 변경 가능)
+- 📬 전송 방법 (둘 중 선택):
+  - 💬 **카카오톡으로 받기** — 페이스북/인스타 없이 바로 사용, 받아서 직접 게시 → [SETUP_KAKAO.md](SETUP_KAKAO.md)
+  - 📤 **인스타그램 자동 업로드** — 공식 Graph API → [SETUP_INSTAGRAM.md](SETUP_INSTAGRAM.md)
+
+> 💡 페이스북/인스타 설정이 번거롭다면 **카카오톡으로 받기**가 가장 간단합니다.
+> 뉴스 게시물이 매일 카톡으로 오면, 마음에 드는 것을 골라 직접 올리면 돼요.
 
 ---
 
@@ -171,13 +176,16 @@ nohup python -m src.scheduler >> output/scheduler.log 2>&1 &
 ```
 .
 ├── app.py                     # 웹 UI (streamlit run app.py)
+├── get_kakao_token.py         # 카카오 리프레시 토큰 발급 도우미
+├── get_credentials.py         # 인스타 토큰/IG_USER_ID 발급 도우미
 ├── src/
 │   ├── config.py              # 환경 변수 로딩
 │   ├── image_generator.py     # DALL·E 3 이미지 생성
 │   ├── caption_generator.py   # Claude 캡션·해시태그 생성
 │   ├── news_fetcher.py        # Claude web_search 로 오늘의 뉴스 검색
 │   ├── instagram_publisher.py # Graph API 업로드 (컨테이너 생성 → 발행)
-│   ├── settings.py            # 자동 게시 설정 저장/로드 (settings.json)
+│   ├── kakao_sender.py        # 카카오톡 '나에게 보내기' 전송
+│   ├── settings.py            # 자동 실행 설정 저장/로드 (settings.json)
 │   ├── scheduler.py           # 설정한 시각에 매일 자동 실행
 │   └── main.py                # 전체 흐름 오케스트레이션
 ├── requirements.txt

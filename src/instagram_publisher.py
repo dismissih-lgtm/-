@@ -16,13 +16,13 @@ _BASE = f"https://graph.facebook.com/{config.GRAPH_API_VERSION}"
 
 def _create_media_container(image_url: str, caption: str) -> str:
     """1단계: 미디어 컨테이너를 만들고 creation_id 를 반환합니다."""
-    url = f"{_BASE}/{config.IG_USER_ID}/media"
+    url = f"{_BASE}/{config.require('IG_USER_ID')}/media"
     resp = requests.post(
         url,
         data={
             "image_url": image_url,
             "caption": caption,
-            "access_token": config.IG_ACCESS_TOKEN,
+            "access_token": config.require("IG_ACCESS_TOKEN"),
         },
         timeout=60,
     )
@@ -38,7 +38,7 @@ def _wait_until_ready(creation_id: str, max_attempts: int = 10) -> None:
             url,
             params={
                 "fields": "status_code",
-                "access_token": config.IG_ACCESS_TOKEN,
+                "access_token": config.require("IG_ACCESS_TOKEN"),
             },
             timeout=30,
         )
@@ -54,12 +54,12 @@ def _wait_until_ready(creation_id: str, max_attempts: int = 10) -> None:
 
 def _publish_media(creation_id: str) -> str:
     """2단계: 컨테이너를 발행하고 게시물 ID 를 반환합니다."""
-    url = f"{_BASE}/{config.IG_USER_ID}/media_publish"
+    url = f"{_BASE}/{config.require('IG_USER_ID')}/media_publish"
     resp = requests.post(
         url,
         data={
             "creation_id": creation_id,
-            "access_token": config.IG_ACCESS_TOKEN,
+            "access_token": config.require("IG_ACCESS_TOKEN"),
         },
         timeout=60,
     )

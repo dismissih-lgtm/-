@@ -20,12 +20,16 @@ try:
     from src import (
         caption_generator,
         image_generator,
-        instagram_publisher,
+        kakao_sender,
+        main,
         news_fetcher,
         settings,
     )
 
     setup_ok = True
+
+    DEST_LABELS = {"kakao": "💬 카카오톡으로 받기", "instagram": "📤 인스타그램 자동 업로드"}
+    DEST_KEYS = list(DEST_LABELS.keys())
 except Exception as exc:  # noqa: BLE001 - 설정 미비를 사용자에게 안내
     setup_ok = False
     st.error(
@@ -92,23 +96,43 @@ if setup_ok:
             st.image(st.session_state.image_url, use_container_width=True)
 
             st.session_state.caption = st.text_area(
-                "캡션 (업로드 전 수정 가능)",
+                "캡션 (전송 전 수정 가능)",
                 st.session_state.caption,
                 height=250,
             )
 
+            saved_dest = settings.load().get("destination", "kakao")
+            dest = st.radio(
+                "전송 방법",
+                DEST_KEYS,
+                format_func=lambda k: DEST_LABELS[k],
+                index=DEST_KEYS.index(saved_dest),
+                horizontal=True,
+            )
+
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("📤 인스타그램에 업로드", type="primary"):
-                    with st.spinner("업로드 중..."):
+                if st.button("🚀 전송", type="primary"):
+                    with st.spinner("전송 중..."):
                         try:
-                            post_id = instagram_publisher.publish_photo(
-                                st.session_state.image_url,
-                                st.session_state.caption,
-                            )
-                            st.success(f"✅ 업로드 완료! 게시물 ID: {post_id}")
+                            headline = st.session_state.get("news_headline") or "게시물"
+                            if dest == "kakao":
+                                kakao_sender.send_post(
+                                    st.session_state.image_url,
+                                    headline,
+                                    st.session_state.caption,
+                                )
+                                st.success("✅ 카카오톡으로 전송 완료!")
+                            else:
+                                main._deliver(
+                                    "instagram",
+                                    st.session_state.image_url,
+                                    headline,
+                                    st.session_state.caption,
+                                )
+                                st.success("✅ 인스타그램 업로드 완료!")
                         except Exception as exc:  # noqa: BLE001
-                            st.error(f"업로드 실패: {exc}")
+                            st.error(f"전송 실패: {exc}")
             with col2:
                 if st.button("🗑️ 초기화"):
                     _reset()
@@ -127,12 +151,21 @@ if setup_ok:
 
         st.subheader("매일 자동 게시 설정")
 
-        enabled = st.toggle("매일 자동 게시 켜기", value=cfg["schedule_enabled"])
+        enabled = st.toggle("매일 자동 실행 켜기", value=cfg["schedule_enabled"])
 
         run_time = st.time_input(
             "실행 시각 (한국 시간)",
             value=datetime.time(cfg["schedule_hour"], cfg["schedule_minute"]),
             step=300,  # 5분 단위
+        )
+
+        saved_dest = cfg.get("destination", "kakao")
+        dest = st.radio(
+            "전송 방법",
+            DEST_KEYS,
+            format_func=lambda k: DEST_LABELS[k],
+            index=DEST_KEYS.index(saved_dest),
+            horizontal=True,
         )
 
         news_query = st.text_input(
@@ -148,10 +181,11 @@ if setup_ok:
                     "schedule_hour": run_time.hour,
                     "schedule_minute": run_time.minute,
                     "news_query": news_query.strip(),
+                    "destination": dest,
                 }
             )
             st.success(
-                f"저장됨 · 매일 {run_time:%H:%M} KST 자동 게시 "
+                f"저장됨 · 매일 {run_time:%H:%M} KST · {DEST_LABELS[dest]} · "
                 f"{'켜짐' if enabled else '꺼짐'}"
             )
 
@@ -165,9 +199,9 @@ if setup_ok:
 
         st.divider()
         st.subheader("지금 한 번 실행 (수동)")
-        st.caption("자동 게시가 어떻게 동작하는지 지금 바로 테스트합니다.")
-        if st.button("📰 오늘의 뉴스로 지금 게시"):
-            with st.spinner("뉴스 검색 → 이미지·캡션 생성 → 업로드 중..."):
+        st.caption("자동 실행이 어떻게 동작하는지 지금 바로 테스트합니다.")
+        if st.button("📰 오늘의 뉴스로 지금 실행"):
+            with st.spinner("뉴스 검색 → 이미지·캡션 생성 → 전송 중..."):
                 try:
                     news = news_fetcher.fetch_top_news(news_query.strip() or None)
                     image_url = image_generator.generate_image(news["headline"])
@@ -175,7 +209,8 @@ if setup_ok:
                     full_caption = caption_generator.format_full_caption(data)
                     st.image(image_url, use_container_width=True)
                     st.text(full_caption)
-                    post_id = instagram_publisher.publish_photo(image_url, full_caption)
-                    st.success(f"✅ 업로드 완료! 게시물 ID: {post_id}")
+                    main._deliver("instagram" if dest == "instagram" else "kakao",
+                                  image_url, news["headline"], full_caption)
+                    st.success(f"✅ 전송 완료! ({DEST_LABELS[dest]})")
                 except Exception as exc:  # noqa: BLE001
                     st.error(f"실행 실패: {exc}")

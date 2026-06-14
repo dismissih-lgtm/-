@@ -9,7 +9,9 @@ from openai import OpenAI
 
 from . import config
 
-client = OpenAI(api_key=config.OPENAI_API_KEY)
+
+def _client() -> OpenAI:
+    return OpenAI(api_key=config.require("OPENAI_API_KEY"))
 
 
 def generate_image(topic: str) -> str:
@@ -21,7 +23,7 @@ def generate_image(topic: str) -> str:
         f"인스타그램 게시물에 어울리는 고품질의 매력적인 이미지. 주제: {topic}. "
         "선명하고 시선을 끄는 구도, 텍스트 없이 시각적으로 완성도 높게."
     )
-    result = client.images.generate(
+    result = _client().images.generate(
         model="dall-e-3",
         prompt=prompt,
         size="1024x1024",

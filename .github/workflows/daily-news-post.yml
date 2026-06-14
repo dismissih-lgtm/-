@@ -28,18 +28,24 @@ jobs:
       - name: 의존성 설치
         run: pip install -r requirements.txt
 
-      - name: 뉴스 게시물 생성·업로드
+      - name: 뉴스 게시물 생성·전송
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # 카카오톡으로 받기 (기본)
+          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
+          # 인스타 자동 업로드를 쓸 때만 필요
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
           # 선택 항목 (Secrets 에 없으면 코드 기본값 사용)
           NEWS_QUERY: ${{ secrets.NEWS_QUERY }}
           GRAPH_API_VERSION: ${{ secrets.GRAPH_API_VERSION }}
+        # 전송 대상은 DEST 환경변수로 (기본 kakao). 인스타로 바꾸려면 DEST=instagram
         run: |
+          DEST="${{ vars.DEST || 'kakao' }}"
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
-            python -m src.main --news --dry-run
+            python -m src.main --news --to "$DEST" --dry-run
           else
-            python -m src.main --news
+            python -m src.main --news --to "$DEST"
           fi

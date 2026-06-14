@@ -6,7 +6,9 @@ import anthropic
 
 from . import config
 
-client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+
+def _client() -> anthropic.Anthropic:
+    return anthropic.Anthropic(api_key=config.require("ANTHROPIC_API_KEY"))
 
 # 모델이 구조화된 JSON으로 답하도록 강제하는 스키마
 _OUTPUT_SCHEMA = {
@@ -36,7 +38,7 @@ _SYSTEM = (
 
 def generate_caption(topic: str) -> dict:
     """주제를 받아 {'caption': str, 'hashtags': [str, ...]} 를 반환합니다."""
-    response = client.messages.create(
+    response = _client().messages.create(
         model=config.CAPTION_MODEL,
         max_tokens=2000,
         thinking={"type": "adaptive"},
