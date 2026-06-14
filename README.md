@@ -51,7 +51,20 @@ cp .env.example .env
 # .env 파일을 열어 키와 토큰을 채워넣으세요.
 ```
 
-## 4. 실행
+## 4. 실행 — 화면 보면서 하기 (웹 UI) ⭐
+
+브라우저에서 **미리보기 → 캡션 수정 → 업로드**까지 클릭으로 진행할 수 있습니다.
+
+```bash
+streamlit run app.py
+```
+
+실행하면 브라우저가 자동으로 열립니다.
+- "주제 직접 입력" 또는 "오늘의 뉴스 검색" 선택
+- **생성하기** → 이미지와 캡션 미리보기
+- 캡션을 직접 다듬은 뒤 **인스타그램에 업로드**
+
+## 4-2. 실행 — 명령줄(터미널)에서 하기
 
 먼저 **업로드 없이** 이미지·캡션만 만들어 확인:
 
@@ -144,6 +157,7 @@ nohup python -m src.scheduler >> output/scheduler.log 2>&1 &
 
 ```
 .
+├── app.py                     # 웹 UI (streamlit run app.py)
 ├── src/
 │   ├── config.py              # 환경 변수 로딩
 │   ├── image_generator.py     # DALL·E 3 이미지 생성
