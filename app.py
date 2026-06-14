@@ -3,9 +3,12 @@
 실행:
     streamlit run app.py
 
-그러면 브라우저가 열리고, 주제 입력 또는 뉴스 검색 → 이미지·캡션 미리보기 →
-캡션 수정 → 업로드 까지 클릭으로 진행할 수 있습니다.
+탭 두 개로 구성됩니다.
+  - ✍️ 직접 만들기 : 보면서 이미지·캡션을 만들고 업로드 (수동)
+  - ⏰ 자동 게시 설정 : 매일 자동 게시 시간/켜짐 설정 + 지금 한 번 실행
 """
+
+import datetime
 
 import streamlit as st
 
@@ -19,6 +22,7 @@ try:
         image_generator,
         instagram_publisher,
         news_fetcher,
+        settings,
     )
 
     setup_ok = True
@@ -36,80 +40,142 @@ def _reset() -> None:
         st.session_state.pop(key, None)
 
 
+def _generate(image_topic: str, caption_topic: str, headline: str | None) -> None:
+    """이미지·캡션을 생성해 세션에 저장합니다."""
+    st.session_state.news_headline = headline
+    st.session_state.image_url = image_generator.generate_image(image_topic)
+    data = caption_generator.generate_caption(caption_topic)
+    st.session_state.caption = caption_generator.format_full_caption(data)
+
+
 if setup_ok:
-    mode = st.radio(
-        "게시물 소재",
-        ["주제 직접 입력", "오늘의 뉴스 검색"],
-        horizontal=True,
-    )
+    tab_manual, tab_auto = st.tabs(["✍️ 직접 만들기", "⏰ 자동 게시 설정"])
 
-    topic_input = ""
-    if mode == "주제 직접 입력":
-        topic_input = st.text_input(
-            "주제", placeholder="예: 가을 감성 카페 신메뉴 홍보"
+    # ─────────────────────────────────────────────────────
+    # 탭 1: 직접 만들기 (수동)
+    # ─────────────────────────────────────────────────────
+    with tab_manual:
+        mode = st.radio(
+            "게시물 소재",
+            ["주제 직접 입력", "오늘의 뉴스 검색"],
+            horizontal=True,
         )
 
-    # ── 생성 ──────────────────────────────────────────────
-    if st.button("🎨 생성하기", type="primary"):
-        with st.spinner("생성 중... (이미지·캡션 만드는 데 20~40초 걸려요)"):
-            try:
-                if mode == "오늘의 뉴스 검색":
-                    news = news_fetcher.fetch_top_news()
-                    image_topic = news["headline"]
-                    caption_topic = news["summary"]
-                    st.session_state.news_headline = news["headline"]
-                else:
-                    if not topic_input.strip():
-                        st.warning("주제를 입력하세요.")
-                        st.stop()
-                    image_topic = caption_topic = topic_input
-                    st.session_state.news_headline = None
+        topic_input = ""
+        if mode == "주제 직접 입력":
+            topic_input = st.text_input(
+                "주제", placeholder="예: 가을 감성 카페 신메뉴 홍보"
+            )
 
-                st.session_state.image_url = image_generator.generate_image(
-                    image_topic
-                )
-                data = caption_generator.generate_caption(caption_topic)
-                st.session_state.caption = caption_generator.format_full_caption(
-                    data
-                )
-            except Exception as exc:  # noqa: BLE001
-                st.error(f"생성 실패: {exc}")
+        if st.button("🎨 생성하기", type="primary"):
+            with st.spinner("생성 중... (이미지·캡션 만드는 데 20~40초 걸려요)"):
+                try:
+                    if mode == "오늘의 뉴스 검색":
+                        news = news_fetcher.fetch_top_news()
+                        _generate(news["headline"], news["summary"], news["headline"])
+                    else:
+                        if not topic_input.strip():
+                            st.warning("주제를 입력하세요.")
+                            st.stop()
+                        _generate(topic_input, topic_input, None)
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"생성 실패: {exc}")
 
-    # ── 미리보기 & 업로드 ─────────────────────────────────
-    if st.session_state.get("image_url"):
+        # 미리보기 & 업로드
+        if st.session_state.get("image_url"):
+            st.divider()
+            st.subheader("미리보기")
+
+            if st.session_state.get("news_headline"):
+                st.caption(f"📰 {st.session_state.news_headline}")
+
+            st.image(st.session_state.image_url, use_container_width=True)
+
+            st.session_state.caption = st.text_area(
+                "캡션 (업로드 전 수정 가능)",
+                st.session_state.caption,
+                height=250,
+            )
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("📤 인스타그램에 업로드", type="primary"):
+                    with st.spinner("업로드 중..."):
+                        try:
+                            post_id = instagram_publisher.publish_photo(
+                                st.session_state.image_url,
+                                st.session_state.caption,
+                            )
+                            st.success(f"✅ 업로드 완료! 게시물 ID: {post_id}")
+                        except Exception as exc:  # noqa: BLE001
+                            st.error(f"업로드 실패: {exc}")
+            with col2:
+                if st.button("🗑️ 초기화"):
+                    _reset()
+                    st.rerun()
+
+            st.info(
+                "💡 생성된 이미지 URL은 약 1시간 후 만료됩니다. "
+                "확인 후 바로 업로드하세요."
+            )
+
+    # ─────────────────────────────────────────────────────
+    # 탭 2: 자동 게시 설정
+    # ─────────────────────────────────────────────────────
+    with tab_auto:
+        cfg = settings.load()
+
+        st.subheader("매일 자동 게시 설정")
+
+        enabled = st.toggle("매일 자동 게시 켜기", value=cfg["schedule_enabled"])
+
+        run_time = st.time_input(
+            "실행 시각 (한국 시간)",
+            value=datetime.time(cfg["schedule_hour"], cfg["schedule_minute"]),
+            step=300,  # 5분 단위
+        )
+
+        news_query = st.text_input(
+            "뉴스 검색어 (비우면 기본값 사용)",
+            value=cfg["news_query"],
+            placeholder="예: 오늘의 IT 기술 뉴스",
+        )
+
+        if st.button("💾 설정 저장", type="primary"):
+            settings.save(
+                {
+                    "schedule_enabled": enabled,
+                    "schedule_hour": run_time.hour,
+                    "schedule_minute": run_time.minute,
+                    "news_query": news_query.strip(),
+                }
+            )
+            st.success(
+                f"저장됨 · 매일 {run_time:%H:%M} KST 자동 게시 "
+                f"{'켜짐' if enabled else '꺼짐'}"
+            )
+
         st.divider()
-        st.subheader("미리보기")
-
-        if st.session_state.get("news_headline"):
-            st.caption(f"📰 {st.session_state.news_headline}")
-
-        st.image(st.session_state.image_url, use_container_width=True)
-
-        # 업로드 전에 캡션을 직접 다듬을 수 있습니다.
-        st.session_state.caption = st.text_area(
-            "캡션 (업로드 전 수정 가능)",
-            st.session_state.caption,
-            height=250,
+        st.markdown(
+            "이 시간 설정으로 자동 게시하려면 **스케줄러를 켜두어야** 합니다:\n"
+            "```\npython -m src.scheduler\n```\n"
+            "컴퓨터를 끄더라도 자동 실행하려면 **GitHub Actions** 방식을 쓰세요 "
+            "(README 참고)."
         )
 
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("📤 인스타그램에 업로드", type="primary"):
-                with st.spinner("업로드 중..."):
-                    try:
-                        post_id = instagram_publisher.publish_photo(
-                            st.session_state.image_url,
-                            st.session_state.caption,
-                        )
-                        st.success(f"✅ 업로드 완료! 게시물 ID: {post_id}")
-                    except Exception as exc:  # noqa: BLE001
-                        st.error(f"업로드 실패: {exc}")
-        with col2:
-            if st.button("🗑️ 초기화"):
-                _reset()
-                st.rerun()
-
-        st.info(
-            "💡 생성된 이미지 URL은 약 1시간 후 만료됩니다. "
-            "오래 두지 말고 확인 후 바로 업로드하세요."
-        )
+        st.divider()
+        st.subheader("지금 한 번 실행 (수동)")
+        st.caption("자동 게시가 어떻게 동작하는지 지금 바로 테스트합니다.")
+        if st.button("📰 오늘의 뉴스로 지금 게시"):
+            with st.spinner("뉴스 검색 → 이미지·캡션 생성 → 업로드 중..."):
+                try:
+                    news = news_fetcher.fetch_top_news(news_query.strip() or None)
+                    image_url = image_generator.generate_image(news["headline"])
+                    data = caption_generator.generate_caption(news["summary"])
+                    full_caption = caption_generator.format_full_caption(data)
+                    st.image(image_url, use_container_width=True)
+                    st.text(full_caption)
+                    post_id = instagram_publisher.publish_photo(image_url, full_caption)
+                    st.success(f"✅ 업로드 완료! 게시물 ID: {post_id}")
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"실행 실패: {exc}")

@@ -59,10 +59,17 @@ cp .env.example .env
 streamlit run app.py
 ```
 
-실행하면 브라우저가 자동으로 열립니다.
+실행하면 브라우저가 자동으로 열리고, 탭 2개로 나뉩니다.
+
+**✍️ 직접 만들기 (수동)**
 - "주제 직접 입력" 또는 "오늘의 뉴스 검색" 선택
 - **생성하기** → 이미지와 캡션 미리보기
 - 캡션을 직접 다듬은 뒤 **인스타그램에 업로드**
+
+**⏰ 자동 게시 설정**
+- 매일 자동 게시 **켜기/끄기**, **실행 시각**(한국 시간), **뉴스 검색어** 설정 후 저장
+- **지금 한 번 실행**으로 자동 게시를 즉시 테스트
+- 저장한 시각은 `settings.json` 에 기록되며 스케줄러(`python -m src.scheduler`)가 읽어서 실행합니다
 
 ## 4-2. 실행 — 명령줄(터미널)에서 하기
 
@@ -99,10 +106,12 @@ python -m src.main --news             # 실제 업로드
 ### 방법 A — 내장 스케줄러 (간단)
 
 ```bash
-python -m src.scheduler            # 매일 KST 06:00 에 뉴스 게시물 생성
-python -m src.scheduler --hour 7   # 시각 변경
-python -m src.scheduler --dry-run  # 테스트
+python -m src.scheduler            # settings.json 의 시각에 매일 실행
+python -m src.scheduler --dry-run  # 테스트(업로드 안 함)
 ```
+
+실행 시각·켜짐 여부·뉴스 검색어는 **웹 UI의 "자동 게시 설정" 탭**에서 바꾸면
+`settings.json` 에 저장되고, 스케줄러가 그 값을 읽습니다.
 
 이 프로세스가 계속 떠 있어야 동작합니다. 백그라운드 유지 예시:
 
@@ -164,7 +173,8 @@ nohup python -m src.scheduler >> output/scheduler.log 2>&1 &
 │   ├── caption_generator.py   # Claude 캡션·해시태그 생성
 │   ├── news_fetcher.py        # Claude web_search 로 오늘의 뉴스 검색
 │   ├── instagram_publisher.py # Graph API 업로드 (컨테이너 생성 → 발행)
-│   ├── scheduler.py           # 매일 KST 06:00 자동 실행
+│   ├── settings.py            # 자동 게시 설정 저장/로드 (settings.json)
+│   ├── scheduler.py           # 설정한 시각에 매일 자동 실행
 │   └── main.py                # 전체 흐름 오케스트레이션
 ├── requirements.txt
 ├── .env.example

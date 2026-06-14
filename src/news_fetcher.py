@@ -9,7 +9,7 @@ import json
 
 import anthropic
 
-from . import config
+from . import config, settings
 
 client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
 
@@ -34,7 +34,8 @@ def _extract_json(text: str) -> dict:
 
 def fetch_top_news(query: str | None = None) -> dict:
     """오늘의 뉴스를 검색해 {'headline': str, 'summary': str} 를 반환합니다."""
-    query = query or config.NEWS_QUERY
+    # 우선순위: 인자 > settings.json > config 기본값
+    query = query or settings.load().get("news_query") or config.NEWS_QUERY
     prompt = (
         f"'{query}' 를(을) 검색해서 가장 흥미로운 뉴스 하나를 선정해줘. "
         "그런 다음 아래 형식의 JSON 으로만 답해 (다른 설명·인용 없이 JSON만):\n"

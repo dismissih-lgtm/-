@@ -14,3 +14,6 @@ env/
 # 생성된 이미지 / 로그
 output/
 *.log
+
+# 로컬 자동 게시 설정 (기기마다 다름)
+settings.json
