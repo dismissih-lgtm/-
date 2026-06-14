@@ -97,7 +97,32 @@ python -m src.scheduler --dry-run  # 테스트
 nohup python -m src.scheduler >> output/scheduler.log 2>&1 &
 ```
 
-### 방법 B — cron (서버에 권장)
+### 방법 C — GitHub Actions (컴퓨터 없이 자동 실행, 추천) ⭐
+
+내 컴퓨터를 켜둘 필요 없이 **GitHub 서버가 매일 6시(KST)에 대신 실행**합니다.
+워크플로 파일은 이미 `.github/workflows/daily-news-post.yml` 에 포함되어 있습니다.
+
+**설정 순서:**
+
+1. 이 저장소를 GitHub에 올립니다(push).
+2. GitHub 저장소 → **Settings → Secrets and variables → Actions → New repository secret**
+   에서 아래 값을 등록합니다:
+   - `ANTHROPIC_API_KEY`
+   - `OPENAI_API_KEY`
+   - `IG_USER_ID`
+   - `IG_ACCESS_TOKEN`
+   - (선택) `NEWS_QUERY`, `GRAPH_API_VERSION`
+3. 끝! 매일 한국 시간 06:00(UTC 21:00)에 자동으로 게시됩니다.
+
+**손으로 테스트:** 저장소 → **Actions** 탭 → "매일 뉴스 인스타 게시" → **Run workflow**
+(미리보기만 하려면 `dry_run` 을 `true` 로).
+
+> ⚠️ **중요:** GitHub Actions의 예약 실행(schedule)은 저장소의 **기본 브랜치**
+> (보통 `main`)에 워크플로 파일이 있을 때만 동작합니다. 지금은 작업 브랜치에 있으므로,
+> 자동 실행이 되려면 **`main` 브랜치에 병합(merge)** 해야 합니다.
+> 참고로 예약 시각은 GitHub 부하 상황에 따라 수 분~수십 분 지연될 수 있습니다.
+
+### 방법 B — cron (직접 운영하는 서버에 권장)
 
 한국 시간은 UTC+9 고정(서머타임 없음)이라 **KST 06:00 = UTC 21:00** 입니다.
 

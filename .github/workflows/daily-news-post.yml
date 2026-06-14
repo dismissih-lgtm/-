@@ -1,0 +1,45 @@
+name: 매일 뉴스 인스타 게시
+
+# 매일 한국 시간 오전 6시에 실행합니다.
+# 한국(KST)은 UTC+9, 서머타임이 없으므로 KST 06:00 = UTC 21:00 입니다.
+on:
+  schedule:
+    - cron: "0 21 * * *"
+  # 탭에서 손으로도 실행해 테스트할 수 있도록 추가
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "업로드 없이 미리보기만 (true/false)"
+        required: false
+        default: "false"
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: 뉴스 게시물 생성·업로드
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          # 선택 항목 (Secrets 에 없으면 코드 기본값 사용)
+          NEWS_QUERY: ${{ secrets.NEWS_QUERY }}
+          GRAPH_API_VERSION: ${{ secrets.GRAPH_API_VERSION }}
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            python -m src.main --news --dry-run
+          else
+            python -m src.main --news
+          fi

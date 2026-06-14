@@ -16,6 +16,12 @@ def _require(name: str) -> str:
     return value
 
 
+def _optional(name: str, default: str) -> str:
+    """빈 문자열(예: 비어 있는 GitHub Secret)도 기본값으로 처리합니다."""
+    value = os.getenv(name)
+    return value if value else default
+
+
 # API 키
 ANTHROPIC_API_KEY = _require("ANTHROPIC_API_KEY")
 OPENAI_API_KEY = _require("OPENAI_API_KEY")
@@ -23,10 +29,10 @@ OPENAI_API_KEY = _require("OPENAI_API_KEY")
 # Instagram Graph API
 IG_USER_ID = _require("IG_USER_ID")
 IG_ACCESS_TOKEN = _require("IG_ACCESS_TOKEN")
-GRAPH_API_VERSION = os.getenv("GRAPH_API_VERSION", "v21.0")
+GRAPH_API_VERSION = _optional("GRAPH_API_VERSION", "v21.0")
 
 # 캡션 생성에 사용할 Claude 모델
 CAPTION_MODEL = "claude-opus-4-8"
 
 # 뉴스 검색어 (원하는 주제·카테고리로 바꿀 수 있습니다)
-NEWS_QUERY = os.getenv("NEWS_QUERY", "오늘의 한국 주요 뉴스 헤드라인")
+NEWS_QUERY = _optional("NEWS_QUERY", "오늘의 한국 주요 뉴스 헤드라인")
