@@ -1,7 +1,5 @@
 streamlit>=1.30.0
 moviepy>=1.0.3
-pysrt>=1.1.2
-ffmpeg-python>=0.2.1
 pillow>=10.0.0
 numpy>=1.24.3
 python-dotenv>=1.0.0

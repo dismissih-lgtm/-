@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎬 동영상 편집 프로그램 UI 미리보기</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            background: white;
+            padding: 10px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .tab-button {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            background: #f0f0f0;
+            color: #333;
+            cursor: pointer;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        .tab-button.active {
+            background: #667eea;
+            color: white;
+        }
+        .tab-button:hover {
+            background: #e0e0e0;
+        }
+        .tab-button.active:hover {
+            background: #667eea;
+        }
+        .tab-content {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+            min-height: 500px;
+        }
+        .section-title {
+            font-size: 1.8em;
+            color: #333;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #667eea;
+        }
+        .upload-area {
+            border: 2px dashed #667eea;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            background: #f8f9ff;
+            margin: 20px 0;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+        }
+        .upload-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+        .upload-text {
+            color: #666;
+            font-size: 1.1em;
+            margin-bottom: 10px;
+        }
+        .upload-hint {
+            color: #999;
+            font-size: 0.9em;
+        }
+        .button {
+            display: inline-block;
+            padding: 12px 30px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            transition: all 0.3s;
+            margin-top: 20px;
+            margin-right: 10px;
+        }
+        .button:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        .button.secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+        .button.secondary:hover {
+            background: #d0d0d0;
+        }
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            color: #333;
+        }
+        .info-icon {
+            margin-right: 10px;
+        }
+        .textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 1em;
+            resize: vertical;
+            margin: 15px 0;
+        }
+        .preview-box {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+        }
+        .option-group {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+        .option-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 12px;
+        }
+        .radio-group {
+            display: flex;
+            gap: 20px;
+            margin: 15px 0;
+        }
+        .radio-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .radio-option input[type="radio"] {
+            cursor: pointer;
+            width: 18px;
+            height: 18px;
+        }
+        .radio-option label {
+            cursor: pointer;
+            color: #333;
+        }
+        .video-preview {
+            width: 100%;
+            background: #000;
+            border-radius: 8px;
+            aspect-ratio: 16/9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+            margin: 20px 0;
+        }
+        .step-indicator {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+            position: relative;
+        }
+        .step {
+            flex: 1;
+            text-align: center;
+        }
+        .step-number {
+            display: inline-flex;
+            width: 40px;
+            height: 40px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .step.completed .step-number {
+            background: #4caf50;
+        }
+        .step-name {
+            color: #666;
+            font-size: 0.95em;
+        }
+        .divider {
+            text-align: center;
+            color: #999;
+            margin: 20px 0;
+            font-size: 1.2em;
+        }
+        .tab-content.hidden {
+            display: none;
+        }
+        .success-message {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 15px;
+            border-radius: 8px;
+            color: #2e7d32;
+            margin: 20px 0;
+        }
+        .srt-display {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎬 동영상 편집 프로그램</h1>
+            <p>자막 자동 제거 → 대본 입력 → 자동 편집</p>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-button active" onclick="switchTab(0)">📹 자막 제거</button>
+            <button class="tab-button" onclick="switchTab(1)">✏️ 자막 생성 & 편집</button>
+        </div>
+
+        <!-- Tab 1: 자막 제거 -->
+        <div class="tab-content">
+            <h2 class="section-title">📹 Step 1: 자막 제거</h2>
+
+            <div class="step-indicator">
+                <div class="step completed">
+                    <div class="step-number">✓</div>
+                    <div class="step-name">비디오 업로드</div>
+                </div>
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-name">자막 제거</div>
+                </div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-name">편집</div>
+                </div>
+            </div>
+
+            <div class="upload-area">
+                <div class="upload-icon">📁</div>
+                <div class="upload-text">동영상 파일을 여기에 드래그하거나 클릭하여 업로드</div>
+                <div class="upload-hint">지원: MP4, AVI, MOV, MKV (최대 4GB)</div>
+            </div>
+
+            <div class="info-box">
+                <span class="info-icon">ℹ️</span>
+                <strong>업로드 완료!</strong> test_video.mp4 (10.0초)
+            </div>
+
+            <div style="text-align: center;">
+                <button class="button" onclick="simulateSubtitleRemoval()">🗑️ 자막 제거 시작</button>
+            </div>
+
+            <div class="video-preview">
+                <div id="removal-status">자막 제거 중...</div>
+            </div>
+
+            <div class="success-message" id="removal-success" style="display:none;">
+                ✅ <strong>자막 제거 완료!</strong> 자막이 제거된 영상이 준비되었습니다.
+            </div>
+        </div>
+
+        <!-- Tab 2: 자막 생성 & 편집 -->
+        <div class="tab-content hidden">
+            <h2 class="section-title">✏️ Step 2: 자막 생성 & 편집</h2>
+
+            <div class="step-indicator">
+                <div class="step completed">
+                    <div class="step-number">✓</div>
+                    <div class="step-name">비디오 준비</div>
+                </div>
+                <div class="step completed">
+                    <div class="step-number">✓</div>
+                    <div class="step-name">자막 제거</div>
+                </div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-name">편집</div>
+                </div>
+            </div>
+
+            <div class="info-box">
+                <span class="info-icon">📹</span>
+                <strong>처리 중인 동영상:</strong> 10.0초
+            </div>
+
+            <h3 class="section-title" style="font-size: 1.3em; border: none; padding-bottom: 0; margin-top: 30px;">대본 입력</h3>
+            <p style="color: #666; margin-bottom: 15px;">대본을 입력하세요 (한 줄에 하나씩)</p>
+            <textarea class="textarea" id="script-input" placeholder="예시:&#10;안녕하세요&#10;저는 AI 편집 프로그램입니다&#10;이 영상은 자동으로 편집되었습니다&#10;감사합니다">안녕하세요
+저는 AI 편집 프로그램입니다
+이 영상은 자동으로 편집되었습니다
+감사합니다</textarea>
+
+            <div class="info-box" id="script-count">
+                <span class="info-icon">📝</span>
+                <strong>4개의 자막이 입력되었습니다</strong>
+            </div>
+
+            <h3 class="section-title" style="font-size: 1.3em; border: none; padding-bottom: 0; margin-top: 30px;">생성된 자막 미리보기</h3>
+            <div class="srt-display">1
+00:00:00,000 --> 00:00:02,500
+안녕하세요
+
+2
+00:00:02,500 --> 00:00:05,000
+저는 AI 편집 프로그램입니다
+
+3
+00:00:05,000 --> 00:00:07,500
+이 영상은 자동으로 편집되었습니다
+
+4
+00:00:07,500 --> 00:00:10,000
+감사합니다</div>
+
+            <h3 class="section-title" style="font-size: 1.3em; border: none; padding-bottom: 0; margin-top: 30px;">편집 옵션</h3>
+
+            <div class="option-group">
+                <div class="option-title">편집 방식 선택</div>
+                <div class="radio-group">
+                    <div class="radio-option">
+                        <input type="radio" id="option1" name="edit-mode" checked onchange="updateEditOption('segment')">
+                        <label for="option1">
+                            <strong>자막에 맞게 편집</strong><br>
+                            <small>각 자막 구간 영상 추출 + 재배열</small>
+                        </label>
+                    </div>
+                    <div class="radio-option">
+                        <input type="radio" id="option2" name="edit-mode" onchange="updateEditOption('overlay')">
+                        <label for="option2">
+                            <strong>자막 오버레이만 추가</strong><br>
+                            <small>원본 영상에 자막 텍스트만 추가</small>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin-top: 30px;">
+                <button class="button" onclick="simulateEditing()">🚀 편집 시작</button>
+            </div>
+
+            <div id="editing-result" style="display:none; margin-top: 30px;">
+                <div class="success-message">
+                    ✅ <strong>편집 완료!</strong>
+                </div>
+                <div class="video-preview">
+                    <span>편집된 동영상 미리보기</span>
+                </div>
+                <div style="text-align: center;">
+                    <button class="button">💾 편집된 동영상 다운로드</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(index) {
+            const tabs = document.querySelectorAll('.tab-content');
+            const buttons = document.querySelectorAll('.tab-button');
+
+            tabs.forEach(t => t.classList.add('hidden'));
+            buttons.forEach(b => b.classList.remove('active'));
+
+            tabs[index].classList.remove('hidden');
+            buttons[index].classList.add('active');
+        }
+
+        function simulateSubtitleRemoval() {
+            const status = document.getElementById('removal-status');
+            status.textContent = '자막 제거 중... (약 3초 소요)';
+
+            setTimeout(() => {
+                status.textContent = '✅ 자막 제거 완료!';
+                document.getElementById('removal-success').style.display = 'block';
+            }, 2000);
+        }
+
+        function updateEditOption(mode) {
+            console.log('편집 옵션 선택:', mode);
+        }
+
+        function simulateEditing() {
+            const result = document.getElementById('editing-result');
+            const button = event.target;
+
+            button.disabled = true;
+            button.textContent = '편집 중...';
+
+            setTimeout(() => {
+                result.style.display = 'block';
+                button.remove();
+                window.scrollTo({ top: result.offsetTop - 100, behavior: 'smooth' });
+            }, 2000);
+        }
+
+        // 대본 입력 시 개수 업데이트
+        document.getElementById('script-input').addEventListener('input', function() {
+            const lines = this.value.trim().split('\n').filter(l => l.trim()).length;
+            document.getElementById('script-count').innerHTML =
+                `<span class="info-icon">📝</span> <strong>${lines}개의 자막이 입력되었습니다</strong>`;
+        });
+    </script>
+</body>
+</html>
