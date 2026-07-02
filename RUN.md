@@ -1,22 +1,28 @@
 # 🎬 동영상 편집 프로그램 실행 방법
 
-## ⭐ 가장 쉬운 방법 — 더블클릭 한 번
+## ⭐ 가장 쉬운 방법 — 붙여넣기 한 번 (Windows)
 
-1. **코드 다운로드**: 아래 링크를 클릭해 ZIP 파일을 받습니다.
+> 인터넷에서 받은 실행 파일은 Windows 스마트 앱 컨트롤이 차단할 수 있어서,
+> 차단당하지 않는 방식으로 설치합니다.
 
-   👉 https://github.com/dismissih-lgtm/-/archive/refs/heads/claude/video-editing-program-inx23m.zip
+1. **키보드에서 `윈도우 키`를 누르고 `powershell` 입력 → 엔터** (파란 창이 열립니다)
 
-2. **압축 풀기**: 받은 ZIP 파일을 마우스 오른쪽 클릭 → "압축 풀기"
+2. **아래 한 줄을 복사해서 붙여넣고 엔터:**
 
-3. **더블클릭으로 실행**:
-   - **Windows**: 폴더 안의 `시작하기.bat` 더블클릭
-   - **macOS**: 폴더 안의 `시작하기.command` 더블클릭
+   ```powershell
+   irm https://raw.githubusercontent.com/dismissih-lgtm/-/claude/video-editing-program-inx23m/install.ps1 | iex
+   ```
 
-끝! Python·FFmpeg가 없으면 **자동으로 설치**하고, 브라우저가 열립니다.
-(처음 한 번은 설치 때문에 몇 분 걸리고, 그 다음부터는 바로 열립니다)
+3. 끝! 자동으로 진행됩니다:
+   - 프로그램 다운로드 → Python·FFmpeg 자동 설치 → 브라우저에서 앱 실행
+   - **바탕화면에 "동영상 편집기" 바로가기 생성** → 다음부터는 더블클릭만 하면 됩니다
 
-> 💡 Windows에서 "Windows의 PC 보호" 경고가 뜨면
-> **추가 정보 → 실행** 을 누르면 됩니다.
+(처음 한 번은 설치 때문에 몇 분 걸립니다)
+
+### macOS
+
+폴더 안의 `시작하기.command` 를 더블클릭하세요.
+(차단되면: 오른쪽 클릭 → 열기 → 열기)
 
 ---
 
