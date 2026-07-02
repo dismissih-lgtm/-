@@ -47,17 +47,24 @@ if "input_path" in st.session_state:
     st.header("2️⃣ 기존 자막 제거")
 
     if "clean_path" not in st.session_state:
-        if st.button("🗑️ 자막 제거 시작", type="primary"):
-            with st.spinner("자막 제거 중..."):
-                clean_path = os.path.join("temp", "no_subtitle_video.mp4")
-                if remove_subtitles(st.session_state.input_path, clean_path):
-                    st.session_state.clean_path = clean_path
-                    st.session_state.duration = get_video_duration(clean_path)
-                    st.rerun()
-                else:
-                    st.error("❌ 자막 제거에 실패했습니다. 파일 형식을 확인해주세요.")
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("🗑️ 자막 제거 시작", type="primary"):
+                with st.spinner("자막 제거 중..."):
+                    clean_path = os.path.join("temp", "no_subtitle_video.mp4")
+                    if remove_subtitles(st.session_state.input_path, clean_path):
+                        st.session_state.clean_path = clean_path
+                        st.session_state.duration = get_video_duration(clean_path)
+                        st.rerun()
+                    else:
+                        st.error("❌ 자막 제거에 실패했습니다. 파일 형식을 확인해주세요.")
+        with col_b:
+            if st.button("⏭️ 건너뛰기 (자막 없는 원본)"):
+                st.session_state.clean_path = st.session_state.input_path
+                st.session_state.duration = get_video_duration(st.session_state.input_path)
+                st.rerun()
     else:
-        st.success(f"✅ 자막 제거 완료 — 영상 길이 **{st.session_state.duration:.1f}초**")
+        st.success(f"✅ 영상 준비 완료 — 길이 **{st.session_state.duration:.1f}초**")
 
 # ──────────────────────────────────────────────
 # 3단계. 대본 입력 & 자막 타이밍
@@ -77,18 +84,58 @@ if "clean_path" in st.session_state:
     if lines:
         duration = st.session_state.duration
 
-        # 대본이 바뀌면 타이밍을 균등 분배로 다시 생성
-        if st.session_state.get("rows_source") != tuple(lines):
-            per = duration / len(lines)
-            st.session_state.rows = [
-                {"start": round(i * per, 2), "end": round((i + 1) * per, 2), "text": line}
-                for i, line in enumerate(lines)
-            ]
-            st.session_state.rows_source = tuple(lines)
+        # 목표 영상 길이 & 구간 선택 방식
+        col_len, col_method = st.columns(2)
+        with col_len:
+            length_options = ["원본 전체"] + [f"{s}초" for s in range(10, 65, 5)]
+            target_choice = st.selectbox(
+                "🎯 편집 후 영상 길이",
+                length_options,
+                help="원본에서 필요한 만큼만 잘라내 이 길이로 만듭니다.",
+            )
+        with col_method:
+            pick_method = st.radio(
+                "구간 선택 방식",
+                ["영상 전체에서 고르게 뽑기 (추천)", "앞부분부터 순서대로"],
+                help="고르게 뽑기: 긴 원본을 처음~끝에서 골고루 잘라 요약하듯 편집합니다.",
+            )
+
+        if target_choice == "원본 전체":
+            target_len = duration
+        else:
+            target_len = float(target_choice.replace("초", ""))
+            if target_len > duration:
+                st.warning(f"⚠️ 원본({duration:.1f}초)보다 길게 만들 수 없어 원본 길이로 맞춥니다.")
+                target_len = duration
+
+        # 대본·목표 길이·방식이 바뀌면 타이밍을 다시 생성
+        n = len(lines)
+        config_key = (tuple(lines), round(target_len, 2), pick_method)
+        if st.session_state.get("rows_source") != config_key:
+            seg = target_len / n
+            if pick_method.startswith("영상 전체에서"):
+                # 원본을 n개 구역으로 나누고, 각 구역 가운데에서 seg초씩 추출
+                window = duration / n
+                seg = min(seg, window)
+                st.session_state.rows = [
+                    {
+                        "start": round(i * window + (window - seg) / 2, 2),
+                        "end": round(i * window + (window - seg) / 2 + seg, 2),
+                        "text": line,
+                    }
+                    for i, line in enumerate(lines)
+                ]
+            else:
+                # 앞에서부터 연속으로 추출
+                st.session_state.rows = [
+                    {"start": round(i * seg, 2), "end": round((i + 1) * seg, 2), "text": line}
+                    for i, line in enumerate(lines)
+                ]
+            st.session_state.rows_source = config_key
 
         st.markdown(
-            f"📝 자막 **{len(lines)}개** · 영상 길이에 맞춰 자동 분배되었습니다. "
-            "**표에서 시작/종료 시간을 직접 수정**할 수 있어요."
+            f"📝 자막 **{n}개** · 완성 영상 길이 **약 {target_len:.0f}초** (자막당 {target_len / n:.1f}초). "
+            "**표에서 시작/종료 시간을 직접 수정**할 수 있어요 — 시간은 원본 영상 기준입니다."
         )
 
         edited_df = st.data_editor(
