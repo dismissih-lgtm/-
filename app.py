@@ -1,127 +1,188 @@
-import streamlit as st
 import os
-from pathlib import Path
+import streamlit as st
+import pandas as pd
 from src.subtitle_remover import remove_subtitles
-from src.subtitle_generator import generate_srt, save_srt, parse_srt
+from src.subtitle_generator import build_srt_from_rows, retime_rows_cumulative, save_srt
 from src.video_editor import get_video_duration, extract_video_segments, add_subtitles_to_video
 
-st.set_page_config(page_title="동영상 편집 프로그램", layout="wide")
-st.title("🎬 동영상 편집 프로그램")
+st.set_page_config(page_title="동영상 편집 프로그램", page_icon="🎬", layout="wide")
 
-st.write("**동작 원리:**")
-st.write("1. 동영상 업로드 → 기존 자막 제거")
-st.write("2. 대본 입력 → 자막 생성")
-st.write("3. 자막 타이밍에 맞게 동영상 자동 편집")
-
-# 폴더 생성
 os.makedirs("temp", exist_ok=True)
 os.makedirs("output", exist_ok=True)
 
-# 탭 분리
-tab1, tab2 = st.tabs(["📹 자막 제거", "✏️ 자막 생성 & 편집"])
+st.title("🎬 동영상 편집 프로그램")
+st.caption("동영상 업로드 → 기존 자막 제거 → 대본 입력 → 자막 타이밍에 맞게 자동 편집")
 
-with tab1:
-    st.header("Step 1: 자막 제거")
+# ──────────────────────────────────────────────
+# 1단계. 동영상 업로드
+# ──────────────────────────────────────────────
+st.header("1️⃣ 동영상 업로드")
 
-    uploaded_video = st.file_uploader("동영상 파일 업로드", type=["mp4", "avi", "mov", "mkv"])
+uploaded = st.file_uploader("동영상 파일을 선택하세요", type=["mp4", "avi", "mov", "mkv"])
 
-    if uploaded_video is not None:
-        # 임시 파일 저장
-        temp_video_path = os.path.join("temp", "input_video.mp4")
-        with open(temp_video_path, "wb") as f:
-            f.write(uploaded_video.getbuffer())
+if uploaded is not None:
+    # 새 파일이 올라온 경우에만 저장 (rerun마다 다시 쓰지 않도록)
+    if st.session_state.get("uploaded_name") != uploaded.name:
+        input_path = os.path.join("temp", "input_video.mp4")
+        with open(input_path, "wb") as f:
+            f.write(uploaded.getbuffer())
+        st.session_state.uploaded_name = uploaded.name
+        st.session_state.input_path = input_path
+        # 이전 작업 상태 초기화
+        for key in ("clean_path", "duration", "rows", "result_path", "result_srt"):
+            st.session_state.pop(key, None)
 
-        st.success("✅ 동영상 업로드 완료")
+    col_v, col_i = st.columns([2, 1])
+    with col_v:
+        st.video(st.session_state.input_path)
+    with col_i:
+        size_mb = os.path.getsize(st.session_state.input_path) / 1e6
+        st.metric("파일", st.session_state.uploaded_name)
+        st.metric("크기", f"{size_mb:.1f} MB")
 
-        if st.button("🗑️ 자막 제거 시작"):
-            st.info("자막 제거 중...")
+# ──────────────────────────────────────────────
+# 2단계. 자막 제거
+# ──────────────────────────────────────────────
+if "input_path" in st.session_state:
+    st.header("2️⃣ 기존 자막 제거")
 
-            output_video_path = os.path.join("temp", "no_subtitle_video.mp4")
-
-            if remove_subtitles(temp_video_path, output_video_path):
-                st.success("✅ 자막 제거 완료!")
-                st.video(output_video_path)
-
-                # 다음 단계를 위해 세션에 저장
-                st.session_state.video_path = output_video_path
-                st.session_state.video_duration = get_video_duration(output_video_path)
-                st.info(f"동영상 길이: {st.session_state.video_duration:.1f}초")
-            else:
-                st.error("❌ 자막 제거 실패")
-
-with tab2:
-    st.header("Step 2: 자막 생성 & 편집")
-
-    if "video_path" not in st.session_state:
-        st.warning("⚠️ 먼저 Step 1에서 동영상을 처리해주세요")
+    if "clean_path" not in st.session_state:
+        if st.button("🗑️ 자막 제거 시작", type="primary"):
+            with st.spinner("자막 제거 중..."):
+                clean_path = os.path.join("temp", "no_subtitle_video.mp4")
+                if remove_subtitles(st.session_state.input_path, clean_path):
+                    st.session_state.clean_path = clean_path
+                    st.session_state.duration = get_video_duration(clean_path)
+                    st.rerun()
+                else:
+                    st.error("❌ 자막 제거에 실패했습니다. 파일 형식을 확인해주세요.")
     else:
-        video_path = st.session_state.video_path
-        duration = st.session_state.video_duration
+        st.success(f"✅ 자막 제거 완료 — 영상 길이 **{st.session_state.duration:.1f}초**")
 
-        st.info(f"📹 처리 중인 동영상: {duration:.1f}초")
+# ──────────────────────────────────────────────
+# 3단계. 대본 입력 & 자막 타이밍
+# ──────────────────────────────────────────────
+if "clean_path" in st.session_state:
+    st.header("3️⃣ 대본 입력 & 자막 타이밍")
 
-        # 대본 입력
-        st.subheader("대본 입력")
-        script_text = st.text_area(
-            "대본을 입력하세요 (한 줄에 하나씩)",
-            placeholder="예시:\n안녕하세요\n이것은 두 번째 자막입니다\n마지막 자막입니다",
-            height=150
+    script_text = st.text_area(
+        "대본을 입력하세요 (한 줄이 자막 하나가 됩니다)",
+        placeholder="안녕하세요\n오늘은 요리 영상입니다\n먼저 재료를 준비해주세요\n감사합니다",
+        height=160,
+        key="script_text",
+    )
+
+    lines = [line.strip() for line in (script_text or "").split("\n") if line.strip()]
+
+    if lines:
+        duration = st.session_state.duration
+
+        # 대본이 바뀌면 타이밍을 균등 분배로 다시 생성
+        if st.session_state.get("rows_source") != tuple(lines):
+            per = duration / len(lines)
+            st.session_state.rows = [
+                {"start": round(i * per, 2), "end": round((i + 1) * per, 2), "text": line}
+                for i, line in enumerate(lines)
+            ]
+            st.session_state.rows_source = tuple(lines)
+
+        st.markdown(
+            f"📝 자막 **{len(lines)}개** · 영상 길이에 맞춰 자동 분배되었습니다. "
+            "**표에서 시작/종료 시간을 직접 수정**할 수 있어요."
         )
 
-        if script_text:
-            lines = [line.strip() for line in script_text.split('\n') if line.strip()]
-            st.info(f"📝 {len(lines)}개의 자막이 입력되었습니다")
+        edited_df = st.data_editor(
+            pd.DataFrame(st.session_state.rows).rename(
+                columns={"start": "시작(초)", "end": "종료(초)", "text": "자막"}
+            ),
+            use_container_width=True,
+            num_rows="fixed",
+            key="timing_editor",
+        )
 
-            # 자막 생성
-            srt_content = generate_srt(script_text, duration, method="equal")
+        # 편집된 값 반영
+        rows = [
+            {"start": float(r["시작(초)"]), "end": float(r["종료(초)"]), "text": str(r["자막"])}
+            for _, r in edited_df.iterrows()
+        ]
+
+        # ──────────────────────────────────────
+        # 4단계. 편집 실행
+        # ──────────────────────────────────────
+        st.header("4️⃣ 편집 실행")
+
+        mode = st.radio(
+            "편집 방식",
+            [
+                "✂️ 컷 편집 + 새 자막 입히기 (추천)",
+                "✂️ 컷 편집만 (자막 없이)",
+                "💬 자막만 입히기 (원본 그대로)",
+            ],
+            help="컷 편집: 표의 각 구간만 잘라 순서대로 이어붙입니다.",
+        )
+
+        if st.button("🚀 편집 시작", type="primary"):
             srt_path = os.path.join("temp", "subtitles.srt")
-            save_srt(srt_content, srt_path)
+            result_path = None
 
-            st.subheader("생성된 자막 미리보기")
-            st.code(srt_content, language="text")
+            with st.spinner("동영상 편집 중... (영상 길이에 따라 시간이 걸립니다)"):
+                if mode.startswith("✂️ 컷 편집 +"):
+                    save_srt(build_srt_from_rows(rows), srt_path)
+                    cut_path = os.path.join("temp", "cut_video.mp4")
+                    if extract_video_segments(st.session_state.clean_path, srt_path, cut_path):
+                        # 컷 편집 후 새 타임라인에 맞게 자막 재계산
+                        new_srt_path = os.path.join("temp", "subtitles_retimed.srt")
+                        save_srt(build_srt_from_rows(retime_rows_cumulative(rows)), new_srt_path)
+                        result_path = os.path.join("output", "edited_with_subs.mp4")
+                        if not add_subtitles_to_video(cut_path, new_srt_path, result_path):
+                            result_path = None
 
-            # 편집 옵션
-            st.subheader("편집 옵션")
-            col1, col2 = st.columns(2)
+                elif mode.startswith("✂️ 컷 편집만"):
+                    save_srt(build_srt_from_rows(rows), srt_path)
+                    result_path = os.path.join("output", "edited_video.mp4")
+                    if not extract_video_segments(st.session_state.clean_path, srt_path, result_path):
+                        result_path = None
 
-            with col1:
-                edit_option = st.radio(
-                    "편집 방식 선택",
-                    ["자막에 맞게 편집", "자막 오버레이만 추가"]
+                else:  # 자막만 입히기
+                    save_srt(build_srt_from_rows(rows), srt_path)
+                    result_path = os.path.join("output", "video_with_subs.mp4")
+                    if not add_subtitles_to_video(st.session_state.clean_path, srt_path, result_path):
+                        result_path = None
+
+            if result_path:
+                st.session_state.result_path = result_path
+                st.session_state.result_srt = build_srt_from_rows(
+                    retime_rows_cumulative(rows) if mode.startswith("✂️ 컷 편집 +") else rows
                 )
+                st.rerun()
+            else:
+                st.error("❌ 편집에 실패했습니다. 타이밍 값을 확인해주세요.")
 
-            with col2:
-                if st.button("🚀 편집 시작"):
-                    st.info("처리 중...")
+# ──────────────────────────────────────────────
+# 5단계. 결과
+# ──────────────────────────────────────────────
+if st.session_state.get("result_path") and os.path.exists(st.session_state.result_path):
+    st.header("✅ 편집 완료!")
 
-                    if edit_option == "자막에 맞게 편집":
-                        # 각 자막 구간만 추출해서 이어붙이기
-                        output_path = os.path.join("output", "edited_video.mp4")
+    result_path = st.session_state.result_path
+    col_v, col_d = st.columns([2, 1])
 
-                        if extract_video_segments(video_path, srt_path, output_path):
-                            st.success("✅ 편집 완료!")
-                            st.video(output_path)
-                            st.download_button(
-                                label="💾 편집된 동영상 다운로드",
-                                data=open(output_path, "rb").read(),
-                                file_name="edited_video.mp4",
-                                mime="video/mp4"
-                            )
-                        else:
-                            st.error("❌ 편집 실패")
+    with col_v:
+        st.video(result_path)
 
-                    else:
-                        # 원본 동영상에 자막만 오버레이
-                        output_path = os.path.join("output", "video_with_subtitles.mp4")
-
-                        if add_subtitles_to_video(video_path, srt_path, output_path):
-                            st.success("✅ 자막 추가 완료!")
-                            st.video(output_path)
-                            st.download_button(
-                                label="💾 자막이 추가된 동영상 다운로드",
-                                data=open(output_path, "rb").read(),
-                                file_name="video_with_subtitles.mp4",
-                                mime="video/mp4"
-                            )
-                        else:
-                            st.error("❌ 자막 추가 실패")
+    with col_d:
+        st.metric("결과 영상 길이", f"{get_video_duration(result_path):.1f}초")
+        with open(result_path, "rb") as f:
+            st.download_button(
+                "💾 동영상 다운로드",
+                data=f.read(),
+                file_name=os.path.basename(result_path),
+                mime="video/mp4",
+                type="primary",
+            )
+        st.download_button(
+            "📄 자막(SRT) 다운로드",
+            data=st.session_state.result_srt,
+            file_name="subtitles.srt",
+            mime="text/plain",
+        )

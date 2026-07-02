@@ -72,3 +72,27 @@ def time_to_seconds(time_str: str) -> float:
     time_str = time_str.replace(',', '.')
     parts = time_str.split(':')
     return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+
+def build_srt_from_rows(rows: List[dict]) -> str:
+    """[{'start':초, 'end':초, 'text':자막}] 목록으로 SRT 생성"""
+    srt_content = []
+    for i, row in enumerate(rows):
+        srt_content.append(str(i + 1))
+        srt_content.append(f"{format_time(row['start'])} --> {format_time(row['end'])}")
+        srt_content.append(row['text'])
+        srt_content.append("")
+    return '\n'.join(srt_content)
+
+def retime_rows_cumulative(rows: List[dict]) -> List[dict]:
+    """컷 편집 후의 새 타임라인에 맞게 자막 시간을 재계산
+
+    각 구간을 잘라 이어붙이면 i번째 자막은
+    [이전 구간 길이의 합, +해당 구간 길이] 위치에 온다.
+    """
+    retimed = []
+    cursor = 0.0
+    for row in rows:
+        seg_len = max(0.0, row['end'] - row['start'])
+        retimed.append({'start': cursor, 'end': cursor + seg_len, 'text': row['text']})
+        cursor += seg_len
+    return retimed

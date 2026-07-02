@@ -1,6 +1,6 @@
-from moviepy.editor import VideoFileClip, concatenate_videoclips, CompositeVideoClip, TextClip
+import subprocess
+from moviepy import VideoFileClip, concatenate_videoclips
 from .subtitle_generator import parse_srt
-from pathlib import Path
 
 def get_video_duration(video_path: str) -> float:
     """비디오 길이 반환 (초)"""
@@ -14,80 +14,52 @@ def get_video_duration(video_path: str) -> float:
         return 0
 
 def extract_video_segments(video_path: str, srt_path: str, output_path: str) -> bool:
-    """자막 타이밍에 맞게 비디오 편집"""
+    """자막 타이밍에 맞게 비디오 편집 (각 자막 구간만 추출해서 연결)"""
     try:
-        # SRT 파일 읽기
         subtitles = parse_srt(srt_path)
-
-        # 비디오 로드
         video = VideoFileClip(video_path)
 
-        # 각 자막 구간에 해당하는 비디오 부분 추출
         clips = []
         for sub in subtitles:
-            start_time = sub['start']
-            end_time = sub['end']
-
-            # 클립 추출 (경계 확인)
-            start_time = max(0, start_time)
-            end_time = min(video.duration, end_time)
-
+            start_time = max(0, sub['start'])
+            end_time = min(video.duration, sub['end'])
             if start_time < end_time:
-                clip = video.subclipped(start_time, end_time)
-                clips.append(clip)
+                clips.append(video.subclipped(start_time, end_time))
 
-        # 클립들 연결
-        if clips:
-            final_video = concatenate_videoclips(clips)
-            final_video.write_videofile(output_path, verbose=False, logger=None)
-            final_video.close()
-            video.close()
-            return True
-        else:
+        if not clips:
             video.close()
             return False
+
+        final_video = concatenate_videoclips(clips)
+        final_video.write_videofile(output_path, logger=None)
+        final_video.close()
+        video.close()
+        return True
 
     except Exception as e:
         print(f"비디오 편집 실패: {e}")
         return False
 
-def add_subtitles_to_video(video_path: str, srt_path: str, output_path: str) -> bool:
-    """비디오에 자막 오버레이 추가"""
+def add_subtitles_to_video(video_path: str, srt_path: str, output_path: str,
+                           font_name: str = "NanumGothic", font_size: int = 22) -> bool:
+    """ffmpeg 자막 필터로 비디오에 자막을 입힘 (한글 지원)"""
     try:
-        subtitles = parse_srt(srt_path)
-        video = VideoFileClip(video_path)
-
-        # 자막 클립 생성
-        text_clips = []
-        for sub in subtitles:
-            start_time = sub['start']
-            end_time = sub['end']
-            duration = end_time - start_time
-
-            try:
-                text_clip = TextClip(
-                    sub['text'],
-                    fontsize=24,
-                    color='white',
-                    font='Arial',
-                    method='caption',
-                    size=(video.w - 40, None)
-                ).set_position(('center', 'bottom')).set_duration(duration).set_start(start_time)
-
-                text_clips.append(text_clip)
-            except Exception as e:
-                print(f"자막 클립 생성 실패: {e}")
-
-        # 비디오와 자막 합치기
-        if text_clips:
-            final_video = CompositeVideoClip([video] + text_clips)
-            final_video.write_videofile(output_path, verbose=False, logger=None)
-            final_video.close()
-            video.close()
-            return True
-        else:
-            video.close()
+        # subtitles 필터 경로에서 특수문자를 이스케이프
+        escaped_srt = srt_path.replace('\\', '\\\\').replace(':', '\\:').replace("'", "\\'")
+        style = f"FontName={font_name},FontSize={font_size},OutlineColour=&H80000000,BorderStyle=1,Outline=2"
+        cmd = [
+            'ffmpeg',
+            '-i', video_path,
+            '-vf', f"subtitles='{escaped_srt}':force_style='{style}'",
+            '-c:a', 'copy',
+            '-y',
+            output_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"FFmpeg 자막 오버레이 오류: {result.stderr[-500:]}")
             return False
+        return True
 
     except Exception as e:
         print(f"자막 오버레이 실패: {e}")
