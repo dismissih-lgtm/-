@@ -1,216 +1,127 @@
-"""브라우저에서 보면서 게시물을 만드는 웹 UI (Streamlit).
-
-실행:
-    streamlit run app.py
-
-탭 두 개로 구성됩니다.
-  - ✍️ 직접 만들기 : 보면서 이미지·캡션을 만들고 업로드 (수동)
-  - ⏰ 자동 게시 설정 : 매일 자동 게시 시간/켜짐 설정 + 지금 한 번 실행
-"""
-
-import datetime
-
 import streamlit as st
+import os
+from pathlib import Path
+from src.subtitle_remover import remove_subtitles
+from src.subtitle_generator import generate_srt, save_srt, parse_srt
+from src.video_editor import get_video_duration, extract_video_segments, add_subtitles_to_video
 
-st.set_page_config(page_title="인스타 자동 게시", page_icon="📸")
-st.title("📸 인스타그램 게시물 자동 생성")
+st.set_page_config(page_title="동영상 편집 프로그램", layout="wide")
+st.title("🎬 동영상 편집 프로그램")
 
-# 설정(.env)이 안 되어 있으면 import 단계에서 막히므로 친절히 안내
-try:
-    from src import (
-        caption_generator,
-        image_generator,
-        kakao_sender,
-        main,
-        news_fetcher,
-        settings,
-    )
+st.write("**동작 원리:**")
+st.write("1. 동영상 업로드 → 기존 자막 제거")
+st.write("2. 대본 입력 → 자막 생성")
+st.write("3. 자막 타이밍에 맞게 동영상 자동 편집")
 
-    setup_ok = True
+# 폴더 생성
+os.makedirs("temp", exist_ok=True)
+os.makedirs("output", exist_ok=True)
 
-    DEST_LABELS = {"kakao": "💬 카카오톡으로 받기", "instagram": "📤 인스타그램 자동 업로드"}
-    DEST_KEYS = list(DEST_LABELS.keys())
-except Exception as exc:  # noqa: BLE001 - 설정 미비를 사용자에게 안내
-    setup_ok = False
-    st.error(
-        f"⚠️ 설정 오류: {exc}\n\n"
-        ".env 파일에 API 키와 인스타그램 토큰을 채웠는지 확인하세요. "
-        "(.env.example 참고)"
-    )
+# 탭 분리
+tab1, tab2 = st.tabs(["📹 자막 제거", "✏️ 자막 생성 & 편집"])
 
+with tab1:
+    st.header("Step 1: 자막 제거")
 
-def _reset() -> None:
-    for key in ("image_url", "caption", "news_headline"):
-        st.session_state.pop(key, None)
+    uploaded_video = st.file_uploader("동영상 파일 업로드", type=["mp4", "avi", "mov", "mkv"])
 
+    if uploaded_video is not None:
+        # 임시 파일 저장
+        temp_video_path = os.path.join("temp", "input_video.mp4")
+        with open(temp_video_path, "wb") as f:
+            f.write(uploaded_video.getbuffer())
 
-def _generate(image_topic: str, caption_topic: str, headline: str | None) -> None:
-    """이미지·캡션을 생성해 세션에 저장합니다."""
-    st.session_state.news_headline = headline
-    st.session_state.image_url = image_generator.generate_image(image_topic)
-    data = caption_generator.generate_caption(caption_topic)
-    st.session_state.caption = caption_generator.format_full_caption(data)
+        st.success("✅ 동영상 업로드 완료")
 
+        if st.button("🗑️ 자막 제거 시작"):
+            st.info("자막 제거 중...")
 
-if setup_ok:
-    tab_manual, tab_auto = st.tabs(["✍️ 직접 만들기", "⏰ 자동 게시 설정"])
+            output_video_path = os.path.join("temp", "no_subtitle_video.mp4")
 
-    # ─────────────────────────────────────────────────────
-    # 탭 1: 직접 만들기 (수동)
-    # ─────────────────────────────────────────────────────
-    with tab_manual:
-        mode = st.radio(
-            "게시물 소재",
-            ["주제 직접 입력", "오늘의 뉴스 검색"],
-            horizontal=True,
+            if remove_subtitles(temp_video_path, output_video_path):
+                st.success("✅ 자막 제거 완료!")
+                st.video(output_video_path)
+
+                # 다음 단계를 위해 세션에 저장
+                st.session_state.video_path = output_video_path
+                st.session_state.video_duration = get_video_duration(output_video_path)
+                st.info(f"동영상 길이: {st.session_state.video_duration:.1f}초")
+            else:
+                st.error("❌ 자막 제거 실패")
+
+with tab2:
+    st.header("Step 2: 자막 생성 & 편집")
+
+    if "video_path" not in st.session_state:
+        st.warning("⚠️ 먼저 Step 1에서 동영상을 처리해주세요")
+    else:
+        video_path = st.session_state.video_path
+        duration = st.session_state.video_duration
+
+        st.info(f"📹 처리 중인 동영상: {duration:.1f}초")
+
+        # 대본 입력
+        st.subheader("대본 입력")
+        script_text = st.text_area(
+            "대본을 입력하세요 (한 줄에 하나씩)",
+            placeholder="예시:\n안녕하세요\n이것은 두 번째 자막입니다\n마지막 자막입니다",
+            height=150
         )
 
-        topic_input = ""
-        if mode == "주제 직접 입력":
-            topic_input = st.text_input(
-                "주제", placeholder="예: 가을 감성 카페 신메뉴 홍보"
-            )
+        if script_text:
+            lines = [line.strip() for line in script_text.split('\n') if line.strip()]
+            st.info(f"📝 {len(lines)}개의 자막이 입력되었습니다")
 
-        if st.button("🎨 생성하기", type="primary"):
-            with st.spinner("생성 중... (이미지·캡션 만드는 데 20~40초 걸려요)"):
-                try:
-                    if mode == "오늘의 뉴스 검색":
-                        news = news_fetcher.fetch_top_news()
-                        _generate(news["headline"], news["summary"], news["headline"])
-                    else:
-                        if not topic_input.strip():
-                            st.warning("주제를 입력하세요.")
-                            st.stop()
-                        _generate(topic_input, topic_input, None)
-                except Exception as exc:  # noqa: BLE001
-                    st.error(f"생성 실패: {exc}")
+            # 자막 생성
+            srt_content = generate_srt(script_text, duration, method="equal")
+            srt_path = os.path.join("temp", "subtitles.srt")
+            save_srt(srt_content, srt_path)
 
-        # 미리보기 & 업로드
-        if st.session_state.get("image_url"):
-            st.divider()
-            st.subheader("미리보기")
+            st.subheader("생성된 자막 미리보기")
+            st.code(srt_content, language="text")
 
-            if st.session_state.get("news_headline"):
-                st.caption(f"📰 {st.session_state.news_headline}")
-
-            st.image(st.session_state.image_url, use_container_width=True)
-
-            st.session_state.caption = st.text_area(
-                "캡션 (전송 전 수정 가능)",
-                st.session_state.caption,
-                height=250,
-            )
-
-            saved_dest = settings.load().get("destination", "kakao")
-            dest = st.radio(
-                "전송 방법",
-                DEST_KEYS,
-                format_func=lambda k: DEST_LABELS[k],
-                index=DEST_KEYS.index(saved_dest),
-                horizontal=True,
-            )
-
+            # 편집 옵션
+            st.subheader("편집 옵션")
             col1, col2 = st.columns(2)
+
             with col1:
-                if st.button("🚀 전송", type="primary"):
-                    with st.spinner("전송 중..."):
-                        try:
-                            headline = st.session_state.get("news_headline") or "게시물"
-                            if dest == "kakao":
-                                kakao_sender.send_post(
-                                    st.session_state.image_url,
-                                    headline,
-                                    st.session_state.caption,
-                                )
-                                st.success("✅ 카카오톡으로 전송 완료!")
-                            else:
-                                main._deliver(
-                                    "instagram",
-                                    st.session_state.image_url,
-                                    headline,
-                                    st.session_state.caption,
-                                )
-                                st.success("✅ 인스타그램 업로드 완료!")
-                        except Exception as exc:  # noqa: BLE001
-                            st.error(f"전송 실패: {exc}")
+                edit_option = st.radio(
+                    "편집 방식 선택",
+                    ["자막에 맞게 편집", "자막 오버레이만 추가"]
+                )
+
             with col2:
-                if st.button("🗑️ 초기화"):
-                    _reset()
-                    st.rerun()
+                if st.button("🚀 편집 시작"):
+                    st.info("처리 중...")
 
-            st.info(
-                "💡 생성된 이미지 URL은 약 1시간 후 만료됩니다. "
-                "확인 후 바로 업로드하세요."
-            )
+                    if edit_option == "자막에 맞게 편집":
+                        # 각 자막 구간만 추출해서 이어붙이기
+                        output_path = os.path.join("output", "edited_video.mp4")
 
-    # ─────────────────────────────────────────────────────
-    # 탭 2: 자동 게시 설정
-    # ─────────────────────────────────────────────────────
-    with tab_auto:
-        cfg = settings.load()
+                        if extract_video_segments(video_path, srt_path, output_path):
+                            st.success("✅ 편집 완료!")
+                            st.video(output_path)
+                            st.download_button(
+                                label="💾 편집된 동영상 다운로드",
+                                data=open(output_path, "rb").read(),
+                                file_name="edited_video.mp4",
+                                mime="video/mp4"
+                            )
+                        else:
+                            st.error("❌ 편집 실패")
 
-        st.subheader("매일 자동 게시 설정")
+                    else:
+                        # 원본 동영상에 자막만 오버레이
+                        output_path = os.path.join("output", "video_with_subtitles.mp4")
 
-        enabled = st.toggle("매일 자동 실행 켜기", value=cfg["schedule_enabled"])
-
-        run_time = st.time_input(
-            "실행 시각 (한국 시간)",
-            value=datetime.time(cfg["schedule_hour"], cfg["schedule_minute"]),
-            step=300,  # 5분 단위
-        )
-
-        saved_dest = cfg.get("destination", "kakao")
-        dest = st.radio(
-            "전송 방법",
-            DEST_KEYS,
-            format_func=lambda k: DEST_LABELS[k],
-            index=DEST_KEYS.index(saved_dest),
-            horizontal=True,
-        )
-
-        news_query = st.text_input(
-            "뉴스 검색어 (비우면 기본값 사용)",
-            value=cfg["news_query"],
-            placeholder="예: 오늘의 IT 기술 뉴스",
-        )
-
-        if st.button("💾 설정 저장", type="primary"):
-            settings.save(
-                {
-                    "schedule_enabled": enabled,
-                    "schedule_hour": run_time.hour,
-                    "schedule_minute": run_time.minute,
-                    "news_query": news_query.strip(),
-                    "destination": dest,
-                }
-            )
-            st.success(
-                f"저장됨 · 매일 {run_time:%H:%M} KST · {DEST_LABELS[dest]} · "
-                f"{'켜짐' if enabled else '꺼짐'}"
-            )
-
-        st.divider()
-        st.markdown(
-            "이 시간 설정으로 자동 게시하려면 **스케줄러를 켜두어야** 합니다:\n"
-            "```\npython -m src.scheduler\n```\n"
-            "컴퓨터를 끄더라도 자동 실행하려면 **GitHub Actions** 방식을 쓰세요 "
-            "(README 참고)."
-        )
-
-        st.divider()
-        st.subheader("지금 한 번 실행 (수동)")
-        st.caption("자동 실행이 어떻게 동작하는지 지금 바로 테스트합니다.")
-        if st.button("📰 오늘의 뉴스로 지금 실행"):
-            with st.spinner("뉴스 검색 → 이미지·캡션 생성 → 전송 중..."):
-                try:
-                    news = news_fetcher.fetch_top_news(news_query.strip() or None)
-                    image_url = image_generator.generate_image(news["headline"])
-                    data = caption_generator.generate_caption(news["summary"])
-                    full_caption = caption_generator.format_full_caption(data)
-                    st.image(image_url, use_container_width=True)
-                    st.text(full_caption)
-                    main._deliver("instagram" if dest == "instagram" else "kakao",
-                                  image_url, news["headline"], full_caption)
-                    st.success(f"✅ 전송 완료! ({DEST_LABELS[dest]})")
-                except Exception as exc:  # noqa: BLE001
-                    st.error(f"실행 실패: {exc}")
+                        if add_subtitles_to_video(video_path, srt_path, output_path):
+                            st.success("✅ 자막 추가 완료!")
+                            st.video(output_path)
+                            st.download_button(
+                                label="💾 자막이 추가된 동영상 다운로드",
+                                data=open(output_path, "rb").read(),
+                                file_name="video_with_subtitles.mp4",
+                                mime="video/mp4"
+                            )
+                        else:
+                            st.error("❌ 자막 추가 실패")
