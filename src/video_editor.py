@@ -1,6 +1,16 @@
 import subprocess
+import platform
 from moviepy import VideoFileClip, concatenate_videoclips
 from .subtitle_generator import parse_srt
+
+def default_korean_font() -> str:
+    """운영체제별 한글 지원 기본 폰트"""
+    system = platform.system()
+    if system == "Windows":
+        return "Malgun Gothic"
+    if system == "Darwin":
+        return "Apple SD Gothic Neo"
+    return "NanumGothic"
 
 def get_video_duration(video_path: str) -> float:
     """비디오 길이 반환 (초)"""
@@ -41,9 +51,11 @@ def extract_video_segments(video_path: str, srt_path: str, output_path: str) -> 
         return False
 
 def add_subtitles_to_video(video_path: str, srt_path: str, output_path: str,
-                           font_name: str = "NanumGothic", font_size: int = 22) -> bool:
+                           font_name: str = None, font_size: int = 22) -> bool:
     """ffmpeg 자막 필터로 비디오에 자막을 입힘 (한글 지원)"""
     try:
+        if font_name is None:
+            font_name = default_korean_font()
         # subtitles 필터 경로에서 특수문자를 이스케이프
         escaped_srt = srt_path.replace('\\', '\\\\').replace(':', '\\:').replace("'", "\\'")
         style = f"FontName={font_name},FontSize={font_size},OutlineColour=&H80000000,BorderStyle=1,Outline=2"

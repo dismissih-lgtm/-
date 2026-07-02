@@ -1,97 +1,80 @@
 # 🎬 동영상 편집 프로그램 실행 방법
 
-## 로컬에서 실행하기
+두 가지 방법 중 하나를 선택하세요.
 
-### 1단계: FFmpeg 설치
+---
 
-먼저 시스템에 FFmpeg가 설치되어 있는지 확인합니다.
+## 방법 1 — 내 컴퓨터에서 실행 (추천)
 
-**Linux (Ubuntu/Debian):**
+### 1) 코드 받기
+
 ```bash
-sudo apt-get install ffmpeg
+git clone https://github.com/dismissih-lgtm/-.git video-editor
+cd video-editor
+git checkout claude/video-editing-program-inx23m
 ```
 
-**macOS:**
-```bash
-brew install ffmpeg
-```
+(이미 받아둔 경우: `git pull` 만 하면 됩니다)
 
-**Windows:**
-- https://ffmpeg.org/download.html 에서 다운로드 후 PATH에 추가
+### 2) FFmpeg 설치 (필수, 한 번만)
 
-### 2단계: Python 패키지 설치
+- **Windows**: https://www.gyan.dev/ffmpeg/builds/ 에서 "release full" 다운로드
+  → 압축 풀고 `bin` 폴더를 PATH에 추가
+  → 또는 간단하게: `winget install ffmpeg`
+- **macOS**: `brew install ffmpeg`
+- **Ubuntu/Debian**: `sudo apt install ffmpeg fonts-nanum`
+
+설치 확인: 터미널에서 `ffmpeg -version` 이 출력되면 OK
+
+### 3) 파이썬 패키지 설치 (한 번만)
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3단계: 웹 앱 실행
+### 4) 실행
 
 ```bash
 streamlit run app.py
 ```
 
-브라우저가 자동으로 열리고, `http://localhost:8501` 에서 앱을 사용할 수 있습니다.
+브라우저가 자동으로 열립니다 (`http://localhost:8501`).
 
 ---
 
-## 웹 UI 구조
+## 방법 2 — Streamlit Community Cloud 무료 배포 (설치 없이 웹에서 사용)
 
-### 📹 **Step 1: 자막 제거**
+내 컴퓨터에 아무것도 설치하지 않고 웹 주소로 사용하는 방법입니다.
 
-1. 동영상 파일 업로드 (MP4, AVI, MOV, MKV 지원)
-2. "🗑️ 자막 제거 시작" 버튼 클릭
-3. 자막이 제거된 영상이 자동으로 다음 단계로 전달됨
+1. https://share.streamlit.io 접속 → GitHub 계정으로 로그인
+2. **New app** 클릭
+3. 저장소: `dismissih-lgtm/-`, 브랜치: `claude/video-editing-program-inx23m`, 파일: `app.py` 선택
+4. **Deploy** 클릭 → 몇 분 뒤 나만의 웹 주소가 생깁니다
 
-### ✏️ **Step 2: 자막 생성 & 편집**
-
-#### 자막 생성
-- 대본을 텍스트로 입력 (한 줄에 하나씩)
-- 자막이 자동으로 생성됨 (동영상 길이에 맞게 균등 분배)
-- 생성된 자막 미리보기로 확인
-
-#### 편집 옵션
-1. **자막에 맞게 편집**
-   - 각 자막 구간에 해당하는 영상 부분만 추출
-   - 순서대로 이어붙임
-   - 불필요한 부분 자동 제거
-
-2. **자막 오버레이만 추가**
-   - 원본 영상 유지
-   - 자막 텍스트만 하단에 오버레이 추가
-   - 타이밍에 맞춰 자동 표시/숨김
-
-#### 결과 다운로드
-- 편집된 동영상 다운로드
-- 로컬 폴더에 저장도 가능 (`output/` 폴더에 자동 저장)
+> `packages.txt` 에 ffmpeg와 한글 폰트가 등록되어 있어 배포 시 자동 설치됩니다.
+> 무료 플랜은 업로드 용량 제한(약 200MB)이 있으니 큰 영상은 방법 1을 사용하세요.
 
 ---
 
-## 사용 예시
+## 사용 순서
 
-### 예시 대본
-
-```
-안녕하세요
-저는 AI 편집 프로그램입니다
-이 영상은 자동으로 편집되었습니다
-감사합니다
-```
-
-### 결과
-- 10초짜리 영상이 입력되면
-- 각 줄마다 2.5초씩 자동 분배
-- 해당 구간의 영상만 추출하여 연결
+1. **동영상 업로드** — MP4/AVI/MOV/MKV
+2. **자막 제거 시작** 버튼 클릭
+3. **대본 입력** — 한 줄이 자막 하나가 됩니다
+4. 자동 분배된 **타이밍 표를 필요하면 수정**
+5. 편집 방식 선택 후 **편집 시작**
+   - ✂️ 컷 편집 + 새 자막 입히기 (추천)
+   - ✂️ 컷 편집만
+   - 💬 자막만 입히기
+6. 완성된 **동영상 / SRT 자막 다운로드**
 
 ---
 
 ## 문제 해결
 
-### FFmpeg를 찾을 수 없다는 오류
-→ FFmpeg가 설치되어 있고 PATH에 추가되었는지 확인하세요
-
-### 자막 제거가 작동하지 않음
-→ 비디오 파일이 손상되지 않았는지 확인하고, 지원 형식인지 확인하세요
-
-### 메모리 부족
-→ 큰 영상 파일은 편집에 시간이 오래 걸릴 수 있습니다
+| 증상 | 해결 |
+|------|------|
+| `ffmpeg not found` | FFmpeg 설치 후 터미널(명령 프롬프트)을 새로 열기 |
+| 한글 자막이 □□□ 로 나옴 | (리눅스) `sudo apt install fonts-nanum` / Windows·Mac은 기본 폰트로 자동 대체됨 |
+| 업로드가 200MB에서 막힘 | `streamlit run app.py --server.maxUploadSize 2000` 으로 실행 |
+| 편집이 오래 걸림 | 정상입니다 — 영상 길이·해상도에 비례합니다 |
