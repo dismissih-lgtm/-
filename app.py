@@ -10,13 +10,109 @@ st.set_page_config(page_title="동영상 편집 프로그램", page_icon="🎬",
 os.makedirs("temp", exist_ok=True)
 os.makedirs("output", exist_ok=True)
 
-st.title("🎬 동영상 편집 프로그램")
-st.caption("동영상 업로드 → 기존 자막 제거 → 대본 입력 → 자막 타이밍에 맞게 자동 편집")
+# ──────────────────────────────────────────────
+# 스타일
+# ──────────────────────────────────────────────
+st.markdown("""
+<style>
+/* 전체 폰트 & 여백 */
+.block-container { padding-top: 1.5rem; max-width: 1100px; }
+#MainMenu, footer { visibility: hidden; }
+
+/* 히어로 배너 */
+.hero {
+    background: linear-gradient(120deg, #7C3AED 0%, #C026D3 55%, #F472B6 100%);
+    border-radius: 18px;
+    padding: 34px 38px;
+    margin-bottom: 28px;
+    color: white;
+    box-shadow: 0 10px 30px rgba(124, 58, 237, .25);
+}
+.hero h1 { margin: 0 0 8px 0; font-size: 2rem; color: white; }
+.hero p  { margin: 0; opacity: .92; font-size: 1.02rem; }
+.hero .flow {
+    display: inline-flex; gap: 8px; margin-top: 16px; flex-wrap: wrap;
+}
+.hero .flow span {
+    background: rgba(255,255,255,.18);
+    border: 1px solid rgba(255,255,255,.35);
+    border-radius: 999px;
+    padding: 5px 14px;
+    font-size: .85rem;
+    backdrop-filter: blur(4px);
+}
+
+/* 단계 헤더 */
+.step-header {
+    display: flex; align-items: center; gap: 12px;
+    margin: 34px 0 6px 0;
+}
+.step-num {
+    width: 34px; height: 34px; flex: none;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #7C3AED, #C026D3);
+    color: white; font-weight: 700; font-size: 1.05rem;
+    border-radius: 10px;
+    box-shadow: 0 4px 10px rgba(124, 58, 237, .3);
+}
+.step-title { font-size: 1.35rem; font-weight: 700; color: #1F2937; }
+.step-done .step-num { background: linear-gradient(135deg, #059669, #10B981); box-shadow: 0 4px 10px rgba(16,185,129,.3); }
+
+/* 버튼 */
+.stButton > button, .stDownloadButton > button {
+    border-radius: 12px;
+    padding: .55rem 1.4rem;
+    font-weight: 600;
+    transition: transform .15s, box-shadow .15s;
+}
+.stButton > button:hover, .stDownloadButton > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(124, 58, 237, .25);
+}
+
+/* 파일 업로더 */
+[data-testid="stFileUploaderDropzone"] {
+    border: 2px dashed #C4B5FD;
+    border-radius: 14px;
+    background: #FAF8FF;
+}
+
+/* 완료 카드 */
+.result-banner {
+    background: linear-gradient(120deg, #059669, #10B981);
+    border-radius: 16px;
+    padding: 22px 30px;
+    color: white;
+    margin: 30px 0 18px 0;
+    box-shadow: 0 8px 24px rgba(16, 185, 129, .25);
+}
+.result-banner h2 { margin: 0; color: white; font-size: 1.4rem; }
+.result-banner p { margin: 6px 0 0 0; opacity: .92; }
+</style>
+""", unsafe_allow_html=True)
+
+def step_header(num: str, title: str, done: bool = False):
+    cls = "step-header step-done" if done else "step-header"
+    st.markdown(
+        f'<div class="{cls}"><div class="step-num">{"✓" if done else num}</div>'
+        f'<div class="step-title">{title}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+st.markdown("""
+<div class="hero">
+  <h1>🎬 동영상 편집 프로그램</h1>
+  <p>대본만 넣으면 자막 제거부터 컷 편집, 새 자막까지 자동으로.</p>
+  <div class="flow">
+    <span>📁 업로드</span><span>🗑️ 자막 제거</span><span>✍️ 대본 입력</span><span>✂️ 자동 편집</span><span>💾 다운로드</span>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────
 # 1단계. 동영상 업로드
 # ──────────────────────────────────────────────
-st.header("1️⃣ 동영상 업로드")
+step_header("1", "동영상 업로드", done="input_path" in st.session_state)
 
 uploaded = st.file_uploader("동영상 파일을 선택하세요", type=["mp4", "avi", "mov", "mkv"])
 
@@ -44,7 +140,7 @@ if uploaded is not None:
 # 2단계. 자막 제거
 # ──────────────────────────────────────────────
 if "input_path" in st.session_state:
-    st.header("2️⃣ 기존 자막 제거")
+    step_header("2", "기존 자막 제거", done="clean_path" in st.session_state)
 
     if "clean_path" not in st.session_state:
         col_a, col_b = st.columns(2)
@@ -70,7 +166,7 @@ if "input_path" in st.session_state:
 # 3단계. 대본 입력 & 자막 타이밍
 # ──────────────────────────────────────────────
 if "clean_path" in st.session_state:
-    st.header("3️⃣ 대본 입력 & 자막 타이밍")
+    step_header("3", "대본 입력 & 자막 타이밍", done=bool(st.session_state.get("rows")))
 
     script_text = st.text_area(
         "대본을 입력하세요 (한 줄이 자막 하나가 됩니다)",
@@ -156,7 +252,7 @@ if "clean_path" in st.session_state:
         # ──────────────────────────────────────
         # 4단계. 편집 실행
         # ──────────────────────────────────────
-        st.header("4️⃣ 편집 실행")
+        step_header("4", "편집 실행", done=bool(st.session_state.get("result_path")))
 
         mode = st.radio(
             "편집 방식",
@@ -209,7 +305,12 @@ if "clean_path" in st.session_state:
 # 5단계. 결과
 # ──────────────────────────────────────────────
 if st.session_state.get("result_path") and os.path.exists(st.session_state.result_path):
-    st.header("✅ 편집 완료!")
+    st.markdown("""
+    <div class="result-banner">
+      <h2>🎉 편집 완료!</h2>
+      <p>아래에서 미리보고, 동영상과 자막 파일을 저장하세요.</p>
+    </div>
+    """, unsafe_allow_html=True)
 
     result_path = st.session_state.result_path
     col_v, col_d = st.columns([2, 1])
