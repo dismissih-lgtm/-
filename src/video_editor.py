@@ -51,6 +51,48 @@ def make_playable_preview(src: str, dst: str) -> str:
     print(f"미리보기 변환 실패: {result.stderr[-300:]}")
     return src  # 실패하면 원본이라도 시도
 
+def change_audio_speed(audio_path: str, output_path: str, speed: float) -> bool:
+    """음성 파일 재생 속도 변경 (음정 유지)"""
+    try:
+        filters = []
+        s = float(speed)
+        while s > 2.0:  # atempo 필터는 한 번에 최대 2배까지
+            filters.append("atempo=2.0")
+            s /= 2.0
+        filters.append(f"atempo={s:.4f}")
+        cmd = ['ffmpeg', '-i', audio_path,
+               '-filter:a', ','.join(filters),
+               '-vn', '-c:a', 'libmp3lame', '-q:a', '4',
+               '-y', output_path]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"속도 변경 실패: {result.stderr[-300:]}")
+            return False
+        return True
+    except Exception as e:
+        print(f"속도 변경 실패: {e}")
+        return False
+
+def replace_video_audio(video_path: str, audio_path: str, output_path: str) -> bool:
+    """영상의 소리를 업로드한 음성으로 교체
+
+    음성이 영상보다 짧으면 남는 부분은 무음, 길면 영상 끝에서 잘림.
+    """
+    try:
+        cmd = ['ffmpeg', '-i', video_path, '-i', audio_path,
+               '-map', '0:v', '-map', '1:a',
+               '-c:v', 'copy', '-c:a', 'aac',
+               '-af', 'apad', '-shortest',
+               '-y', output_path]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"음성 입히기 실패: {result.stderr[-300:]}")
+            return False
+        return True
+    except Exception as e:
+        print(f"음성 입히기 실패: {e}")
+        return False
+
 def get_video_duration(video_path: str) -> float:
     """비디오 길이 반환 (초)"""
     try:

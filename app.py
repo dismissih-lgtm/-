@@ -5,7 +5,7 @@ from src.subtitle_remover import remove_subtitles
 from src.subtitle_generator import build_srt_from_rows, retime_rows_cumulative, save_srt
 from src.video_editor import (
     get_video_duration, extract_multi_video_segments, add_subtitles_to_video,
-    make_playable_preview,
+    make_playable_preview, change_audio_speed, replace_video_audio,
 )
 
 st.set_page_config(page_title="동영상 편집 프로그램", page_icon="🎬", layout="wide")
@@ -367,9 +367,96 @@ if st.session_state.get("clean_paths"):
             st.warning("⚠️ 표에 올바른 구간이 없습니다. 시작/종료 시간을 확인해주세요.")
 
         # ──────────────────────────────────────
-        # 4단계. 편집 실행
+        # 4단계. 음성(내레이션) — 선택
         # ──────────────────────────────────────
-        step_header("4", "편집 실행", done=bool(st.session_state.get("result_path")))
+        step_header("4", "음성(내레이션) — 선택 사항", done=bool(st.session_state.get("narr_ready")))
+        st.caption("음성을 준비하면 완성 영상의 소리가 이 음성으로 바뀝니다. 안 하면 원본 소리를 그대로 사용해요.")
+
+        narr_source = st.radio(
+            "음성 준비 방법",
+            ["🎙️ 대본으로 자동 생성 (목소리 선택)", "📁 내 음성 파일 업로드"],
+            horizontal=True,
+        )
+
+        if narr_source.startswith("🎙️"):
+            from src.tts import VOICES, generate_speech
+
+            col_voice, col_gen = st.columns([2, 1])
+            with col_voice:
+                voice_name = st.selectbox("🗣️ 목소리 선택", list(VOICES.keys()))
+            with col_gen:
+                st.write("")  # 버튼 높이 맞춤
+                make_voice = st.button("🎙️ 음성 만들기", type="primary")
+
+            if make_voice:
+                tts_text = "\n".join(lines)
+                with st.spinner("음성 생성 중... (인터넷 연결 필요)"):
+                    tts_path = os.path.join("temp", "narration_tts.mp3")
+                    ok, err = generate_speech(tts_text, VOICES[voice_name], tts_path)
+                if ok:
+                    st.session_state.narr_path = tts_path
+                    st.session_state.narr_sig = ("tts", voice_name, tts_text)
+                    st.session_state.pop("narr_spd_cache", None)
+                    st.success(f"✅ 음성 생성 완료 — {voice_name}")
+                else:
+                    st.error(f"❌ 음성 생성에 실패했습니다. 인터넷 연결을 확인하고 다시 시도해주세요.\n\n상세: {err[:200]}")
+        else:
+            narr_upload = st.file_uploader(
+                "음성 파일 (MP3, WAV, M4A, OGG)",
+                type=["mp3", "wav", "m4a", "aac", "ogg"],
+                key="narr_uploader",
+            )
+            if narr_upload is not None:
+                narr_sig = (narr_upload.name, narr_upload.size)
+                if st.session_state.get("narr_sig") != narr_sig:
+                    ext = narr_upload.name.rsplit(".", 1)[-1].lower() if "." in narr_upload.name else "mp3"
+                    narr_path = os.path.join("temp", f"narration.{ext}")
+                    with open(narr_path, "wb") as f:
+                        f.write(narr_upload.getbuffer())
+                    st.session_state.narr_sig = narr_sig
+                    st.session_state.narr_path = narr_path
+                    st.session_state.pop("narr_spd_cache", None)
+
+        # 준비된 음성이 있으면: 속도 조절 + 미리듣기
+        if st.session_state.get("narr_path") and os.path.exists(st.session_state.narr_path):
+            col_speed, col_listen = st.columns([1, 2])
+            with col_speed:
+                speed_choice = st.select_slider(
+                    "⚡ 재생 속도",
+                    options=[f"{x / 10:.1f}배속" for x in range(10, 21)],
+                    value="1.0배속",
+                )
+                speed = float(speed_choice.replace("배속", ""))
+
+            # 선택한 속도가 반영된 미리듣기 준비
+            if speed == 1.0:
+                narr_ready = st.session_state.narr_path
+            else:
+                cache = st.session_state.get("narr_spd_cache", {})
+                key = f"{speed:.1f}"
+                if key not in cache:
+                    with st.spinner(f"{speed_choice} 미리듣기 준비 중..."):
+                        spd_path = os.path.join("temp", f"narration_{key}.mp3")
+                        if change_audio_speed(st.session_state.narr_path, spd_path, speed):
+                            cache[key] = spd_path
+                            st.session_state.narr_spd_cache = cache
+                narr_ready = cache.get(key, st.session_state.narr_path)
+
+            with col_listen:
+                st.markdown(f"**🎧 미리듣기** ({speed_choice})")
+                st.audio(narr_ready)
+
+            st.session_state.narr_ready = narr_ready
+
+            if st.button("🚫 음성 사용 안 함 (원본 소리 유지)"):
+                for k in ("narr_path", "narr_sig", "narr_ready", "narr_spd_cache"):
+                    st.session_state.pop(k, None)
+                st.rerun()
+
+        # ──────────────────────────────────────
+        # 5단계. 편집 실행
+        # ──────────────────────────────────────
+        step_header("5", "편집 실행", done=bool(st.session_state.get("result_path")))
 
         mode_options = ["✂️ 컷 편집 + 새 자막 입히기 (추천)", "✂️ 컷 편집만 (자막 없이)"]
         if n_videos == 1:
@@ -409,6 +496,15 @@ if st.session_state.get("clean_paths"):
                         st.session_state.result_srt = build_srt_from_rows(rows)
                     else:
                         result_path = None
+
+            # 음성을 올렸으면 완성 영상의 소리를 음성으로 교체
+            if result_path and st.session_state.get("narr_ready"):
+                with st.spinner("음성 입히는 중..."):
+                    voiced = os.path.join("temp", "with_voice.mp4")
+                    if replace_video_audio(result_path, st.session_state.narr_ready, voiced):
+                        os.replace(voiced, result_path)
+                    else:
+                        st.warning("⚠️ 음성 입히기에 실패해 원본 소리를 유지합니다.")
 
             if result_path:
                 st.session_state.result_path = result_path
