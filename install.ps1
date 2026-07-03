@@ -49,7 +49,33 @@ $extract = Join-Path $env:TEMP "video-editor-extract"
 Invoke-WebRequest -Uri "https://github.com/dismissih-lgtm/-/archive/refs/heads/claude/video-editing-program-inx23m.zip" -OutFile $zip
 if (Test-Path $extract) { Remove-Item $extract -Recurse -Force }
 Expand-Archive -Path $zip -DestinationPath $extract -Force
-if (Test-Path $AppDir) { Remove-Item $AppDir -Recurse -Force }
+
+# 실행 중인 편집기 앱이 있으면 자동 종료 (업데이트를 위해)
+try {
+    Get-CimInstance Win32_Process -Filter "Name like 'python%'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -match 'streamlit' } |
+        ForEach-Object {
+            Write-Host "      실행 중인 편집기를 잠시 종료합니다..."
+            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+        }
+    Start-Sleep -Seconds 1
+} catch {}
+
+if (Test-Path $AppDir) {
+    try {
+        Remove-Item $AppDir -Recurse -Force
+    } catch {
+        Start-Sleep -Seconds 2
+        try {
+            Remove-Item $AppDir -Recurse -Force
+        } catch {
+            Write-Host ""
+            Write-Host "기존 프로그램 폴더를 정리할 수 없습니다." -ForegroundColor Red
+            Write-Host "편집기 창(검은 창)과 브라우저 탭을 모두 닫은 뒤 이 명령을 다시 실행해주세요."
+            return
+        }
+    }
+}
 $inner = Get-ChildItem $extract -Directory | Select-Object -First 1
 Move-Item $inner.FullName $AppDir
 Write-Host "      완료: $AppDir" -ForegroundColor Green

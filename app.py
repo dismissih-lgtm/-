@@ -108,6 +108,10 @@ def video_grid(items):
                 st.markdown(f'<div class="video-sub">{item["sub"]}</div>', unsafe_allow_html=True)
             st.video(item["path"])
 
+def line_duration(text: str) -> float:
+    """자막 글자 수에 맞는 자연스러운 표시 시간 (읽는 속도 기준)"""
+    return max(1.5, min(8.0, 0.8 + len(text) * 0.25))
+
 def allocate_lines(durations, n):
     """대본 n줄을 영상 길이에 비례해서 배분 (합계 = n)"""
     k = len(durations)
@@ -265,11 +269,11 @@ if st.session_state.get("clean_paths"):
     if lines:
         col_len, col_method = st.columns(2)
         with col_len:
-            length_options = ["원본 전체"] + [f"{s}초" for s in range(10, 65, 5)]
+            length_options = ["자동 (자막에 맞게)"] + [f"약 {s}초" for s in range(10, 65, 5)]
             target_choice = st.selectbox(
                 "🎯 편집 후 영상 길이",
                 length_options,
-                help="원본에서 필요한 만큼만 잘라내 이 길이로 만듭니다.",
+                help="자동: 자막 글자 수에 맞는 자연스러운 길이. 초를 고르면 그 길이에 가깝게 맞춥니다.",
             )
         with col_method:
             pick_method = st.radio(
@@ -278,18 +282,19 @@ if st.session_state.get("clean_paths"):
                 help="고르게 뽑기: 각 영상의 처음~끝에서 골고루 잘라 요약하듯 편집합니다.",
             )
 
-        if target_choice == "원본 전체":
-            target_len = total_dur
-        else:
-            target_len = float(target_choice.replace("초", ""))
-            if target_len > total_dur:
-                st.warning(f"⚠️ 원본 총 길이({total_dur:.1f}초)보다 길게 만들 수 없어 원본 길이로 맞춥니다.")
-                target_len = total_dur
-
         n = len(lines)
-        config_key = (tuple(lines), round(target_len, 2), pick_method, tuple(round(d, 1) for d in durations))
+
+        # 자막 글자 수 기반 자연스러운 길이 (정확한 초 맞춤이 아니라 자막에 맞게)
+        durs = [line_duration(t) for t in lines]
+        if target_choice != "자동 (자막에 맞게)":
+            target_len = float(target_choice.replace("약 ", "").replace("초", ""))
+            scale = target_len / sum(durs)
+            durs = [max(1.0, d * scale) for d in durs]
+        if sum(durs) > total_dur:
+            durs = [d * total_dur / sum(durs) for d in durs]
+
+        config_key = (tuple(lines), target_choice, pick_method, tuple(round(d, 1) for d in durations))
         if st.session_state.get("rows_source") != config_key:
-            seg = target_len / n
             alloc = allocate_lines(durations, n)  # 영상별 대본 줄 수 (길이 비례)
             rows = []
             line_idx = 0
@@ -298,8 +303,8 @@ if st.session_state.get("clean_paths"):
                     continue
                 if pick_method.startswith("영상 전체에서"):
                     window = d / m
-                    s_len = min(seg, window)
                     for i in range(m):
+                        s_len = min(durs[line_idx], window)
                         start = i * window + (window - s_len) / 2
                         rows.append({
                             "video": vi,
@@ -309,15 +314,17 @@ if st.session_state.get("clean_paths"):
                         })
                         line_idx += 1
                 else:
+                    cursor = 0.0
                     for i in range(m):
-                        start = min(i * seg, max(0.0, d - seg))
-                        end = min(d, start + seg)
+                        s_len = min(durs[line_idx], max(0.5, d - cursor))
+                        start = min(cursor, max(0.0, d - s_len))
                         rows.append({
                             "video": vi,
                             "start": round(start, 2),
-                            "end": round(end, 2),
+                            "end": round(min(d, start + s_len), 2),
                             "text": lines[line_idx],
                         })
+                        cursor = start + s_len
                         line_idx += 1
             st.session_state.rows = rows
             st.session_state.rows_source = config_key
@@ -325,7 +332,7 @@ if st.session_state.get("clean_paths"):
         expected = sum(r["end"] - r["start"] for r in st.session_state.rows)
         video_hint = f" · 영상 {n_videos}개에 길이 비례로 배분" if n_videos > 1 else ""
         st.markdown(
-            f"📝 자막 **{n}개** · 완성 영상 길이 **약 {expected:.0f}초**{video_hint}. "
+            f"📝 자막 **{n}개** · 완성 영상 길이 **약 {expected:.0f}초** (자막 글자 수에 맞춰 배분){video_hint}. "
             "**표에서 영상 번호와 시작/종료 시간을 직접 수정**할 수 있어요 — 시간은 해당 영상 기준입니다."
         )
 
@@ -339,18 +346,25 @@ if st.session_state.get("clean_paths"):
                 "영상": st.column_config.NumberColumn(min_value=1, max_value=n_videos, step=1,
                                                       help=f"1~{n_videos}번 영상 중 어디서 잘라올지"),
             },
-            key="timing_editor",
+            key=f"timing_editor_{abs(hash(config_key))}",  # 설정이 바뀌면 표를 새로 그림 (꼬임 방지)
         )
 
-        rows = [
-            {
-                "video": int(r["영상"]),
-                "start": float(r["시작(초)"]),
-                "end": float(r["종료(초)"]),
-                "text": str(r["자막"]),
-            }
-            for _, r in edited_df.iterrows()
-        ]
+        # 표에서 지워지거나 잘못 입력된 칸은 건너뛰기 (빈 칸으로 인한 편집 실패 방지)
+        rows = []
+        for _, r in edited_df.iterrows():
+            try:
+                if pd.isna(r["시작(초)"]) or pd.isna(r["종료(초)"]) or pd.isna(r["영상"]):
+                    continue
+                rows.append({
+                    "video": int(r["영상"]),
+                    "start": float(r["시작(초)"]),
+                    "end": float(r["종료(초)"]),
+                    "text": "" if pd.isna(r["자막"]) else str(r["자막"]),
+                })
+            except (ValueError, TypeError):
+                continue
+        if not rows:
+            st.warning("⚠️ 표에 올바른 구간이 없습니다. 시작/종료 시간을 확인해주세요.")
 
         # ──────────────────────────────────────
         # 4단계. 편집 실행

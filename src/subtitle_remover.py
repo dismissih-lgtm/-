@@ -18,9 +18,20 @@ def remove_subtitles(input_video: str, output_video: str) -> bool:
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
             return True
-        else:
-            print(f"FFmpeg 오류: {result.stderr}")
-            return False
+
+        # 코덱 복사가 실패하는 형식(mp4에 담을 수 없는 코덱 등)은 재인코딩으로 재시도
+        print(f"코덱 복사 실패, 재인코딩으로 재시도: {result.stderr[-200:]}")
+        cmd = [
+            'ffmpeg', '-i', input_video,
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
+            '-c:a', 'aac',
+            '-sn', '-y', output_video
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            return True
+        print(f"FFmpeg 오류: {result.stderr[-300:]}")
+        return False
     except Exception as e:
         print(f"자막 제거 실패: {e}")
         return False
