@@ -2,6 +2,7 @@ import os
 import streamlit as st
 import pandas as pd
 from src.subtitle_remover import remove_subtitles
+from src.hard_sub_remover import remove_hard_subtitles
 from src.subtitle_generator import build_srt_from_rows, retime_rows_cumulative, save_srt
 from src.video_editor import (
     get_video_duration, extract_multi_video_segments, add_subtitles_to_video,
@@ -199,19 +200,39 @@ if st.session_state.get("videos"):
     step_header("2", "기존 자막 제거", done="clean_paths" in st.session_state)
 
     if "clean_paths" not in st.session_state:
+        removal_mode = st.radio(
+            "제거 방식",
+            [
+                "🧽 화면에 새겨진 자막 지우기 — 중국어 자막 등 (추천)",
+                "⚡ 빠른 제거 — 파일 속 자막 트랙만 (켜고 끄는 자막)",
+            ],
+            help="영상 화면에 글자가 박혀 있으면 '화면에 새겨진 자막 지우기'를 선택하세요. "
+                 "글자를 찾아 주변 배경으로 복원하며, 영상 길이만큼 시간이 걸립니다.",
+        )
+
         col_a, col_b = st.columns(2)
         with col_a:
             if st.button("🗑️ 자막 제거 시작", type="primary"):
                 clean_paths = []
                 ok = True
-                with st.spinner(f"자막 제거 중... ({len(videos)}개)"):
-                    for i, v in enumerate(videos):
-                        clean = os.path.join("temp", f"clean_{i}.mp4")
-                        if remove_subtitles(v["path"], clean):
-                            clean_paths.append(clean)
-                        else:
-                            ok = False
-                            break
+                hard_mode = removal_mode.startswith("🧽")
+                for i, v in enumerate(videos):
+                    clean = os.path.join("temp", f"clean_{i}.mp4")
+                    if hard_mode:
+                        bar = st.progress(0.0, text=f"🧽 {v['name']} — 자막 지우는 중... (영상 길이만큼 걸려요)")
+                        done = remove_hard_subtitles(
+                            v["path"], clean,
+                            progress_cb=lambda p, b=bar, name=v['name']: b.progress(p, text=f"🧽 {name} — {p*100:.0f}%"),
+                        )
+                        bar.empty()
+                    else:
+                        with st.spinner(f"⚡ {v['name']} — 자막 트랙 제거 중..."):
+                            done = remove_subtitles(v["path"], clean)
+                    if done:
+                        clean_paths.append(clean)
+                    else:
+                        ok = False
+                        break
                 if ok:
                     st.session_state.clean_paths = clean_paths
                     st.session_state.durations = [get_video_duration(p) for p in clean_paths]
