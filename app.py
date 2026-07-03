@@ -2,7 +2,7 @@ import os
 import streamlit as st
 import pandas as pd
 from src.subtitle_remover import remove_subtitles
-from src.hard_sub_remover import remove_hard_subtitles
+from src.hard_sub_remover import remove_hard_subtitles, BANDS
 from src.subtitle_generator import build_srt_from_rows, retime_rows_cumulative, save_srt
 from src.video_editor import (
     get_video_duration, extract_multi_video_segments, add_subtitles_to_video,
@@ -210,6 +210,16 @@ if st.session_state.get("videos"):
                  "글자를 찾아 주변 배경으로 복원하며, 영상 길이만큼 시간이 걸립니다.",
         )
 
+        if removal_mode.startswith("🧽"):
+            band_choice = st.radio(
+                "자막 위치",
+                list(BANDS.keys()),
+                horizontal=True,
+                help="자막이 있는 위치를 고르면 그 부분만 검사해서 빠르고 정확해집니다.",
+            )
+        else:
+            band_choice = "상단+하단"
+
         col_a, col_b = st.columns(2)
         with col_a:
             if st.button("🗑️ 자막 제거 시작", type="primary"):
@@ -221,7 +231,7 @@ if st.session_state.get("videos"):
                     if hard_mode:
                         bar = st.progress(0.0, text=f"🧽 {v['name']} — 자막 지우는 중... (영상 길이만큼 걸려요)")
                         done = remove_hard_subtitles(
-                            v["path"], clean,
+                            v["path"], clean, bands=BANDS[band_choice],
                             progress_cb=lambda p, b=bar, name=v['name']: b.progress(p, text=f"🧽 {name} — {p*100:.0f}%"),
                         )
                         bar.empty()
