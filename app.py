@@ -7,6 +7,7 @@ from src.subtitle_generator import build_srt_from_rows, retime_rows_cumulative, 
 from src.video_editor import (
     get_video_duration, extract_multi_video_segments, add_subtitles_to_video,
     make_playable_preview, change_audio_speed, replace_video_audio,
+    convert_to_shorts, get_video_size,
 )
 
 st.set_page_config(page_title="동영상 편집 프로그램", page_icon="🎬", layout="wide")
@@ -493,11 +494,35 @@ if st.session_state.get("clean_paths"):
         if n_videos == 1:
             mode_options.append("💬 자막만 입히기 (원본 그대로)")
 
-        mode = st.radio(
-            "편집 방식",
-            mode_options,
-            help="컷 편집: 표의 각 구간만 잘라 순서대로 이어붙입니다.",
-        )
+        col_mode, col_size = st.columns(2)
+        with col_mode:
+            mode = st.radio(
+                "편집 방식",
+                mode_options,
+                help="컷 편집: 표의 각 구간만 잘라 순서대로 이어붙입니다.",
+            )
+        with col_size:
+            size_choice = st.radio(
+                "📐 출력 크기",
+                [
+                    "📱 쇼츠 세로 1080x1920 — 여백은 흐린 배경 (추천)",
+                    "📱 쇼츠 세로 1080x1920 — 꽉 차게 (양옆 잘림)",
+                    "원본 크기 그대로",
+                ],
+                help="쇼츠/릴스용 9:16 세로 영상으로 만듭니다.",
+            )
+
+        def apply_output_size(src_path: str) -> str:
+            """선택한 출력 크기 적용 (쇼츠 변환)"""
+            if size_choice.startswith("원본"):
+                return src_path
+            style = "crop" if "꽉 차게" in size_choice else "blur"
+            dst = os.path.join("temp", "formatted.mp4")
+            with st.spinner("📱 쇼츠 세로 형식(1080x1920)으로 변환 중..."):
+                if convert_to_shorts(src_path, dst, style):
+                    return dst
+            st.warning("⚠️ 쇼츠 변환에 실패해 원본 크기로 만듭니다.")
+            return src_path
 
         if st.button("🚀 편집 시작", type="primary"):
             srt_path = os.path.join("temp", "subtitles.srt")
@@ -508,6 +533,7 @@ if st.session_state.get("clean_paths"):
                 if mode.startswith("✂️"):
                     cut_path = os.path.join("temp", "cut_video.mp4")
                     if extract_multi_video_segments(clean_paths, rows, cut_path):
+                        cut_path = apply_output_size(cut_path)  # 쇼츠 변환 (자막 입히기 전)
                         retimed = retime_rows_cumulative(rows)
                         if "새 자막" in mode:
                             save_srt(build_srt_from_rows(retimed), srt_path)
@@ -521,9 +547,10 @@ if st.session_state.get("clean_paths"):
                             st.session_state.result_srt = build_srt_from_rows(retimed)
 
                 else:  # 자막만 입히기 (영상 1개)
+                    src = apply_output_size(clean_paths[0])  # 쇼츠 변환 (자막 입히기 전)
                     save_srt(build_srt_from_rows(rows), srt_path)
                     result_path = os.path.join("output", "video_with_subs.mp4")
-                    if add_subtitles_to_video(clean_paths[0], srt_path, result_path):
+                    if add_subtitles_to_video(src, srt_path, result_path):
                         st.session_state.result_srt = build_srt_from_rows(rows)
                     else:
                         result_path = None
@@ -562,6 +589,8 @@ if st.session_state.get("result_path") and os.path.exists(st.session_state.resul
 
     with col_d:
         st.metric("결과 영상 길이", f"{get_video_duration(result_path):.1f}초")
+        rw, rh = get_video_size(result_path)
+        st.metric("해상도", f"{rw}x{rh}" + (" 📱 쇼츠" if (rw, rh) == (1080, 1920) else ""))
         with open(result_path, "rb") as f:
             st.download_button(
                 "💾 동영상 다운로드",

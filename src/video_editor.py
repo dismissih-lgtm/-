@@ -51,6 +51,49 @@ def make_playable_preview(src: str, dst: str) -> str:
     print(f"미리보기 변환 실패: {result.stderr[-300:]}")
     return src  # 실패하면 원본이라도 시도
 
+def convert_to_shorts(input_path: str, output_path: str, style: str = "blur") -> bool:
+    """쇼츠 세로 형식(9:16, 1080x1920)으로 변환
+
+    style:
+      - "blur": 영상을 가운데 두고 위아래 여백을 흐린 배경으로 채움 (추천)
+      - "crop": 화면을 꽉 채우고 양옆(또는 위아래)을 잘라냄
+    """
+    try:
+        if style == "crop":
+            vf = ("scale=1080:1920:force_original_aspect_ratio=increase,"
+                  "crop=1080:1920,setsar=1")
+        else:
+            vf = ("split[a][b];"
+                  "[a]scale=1080:1920:force_original_aspect_ratio=increase,"
+                  "crop=1080:1920,boxblur=20:5[bg];"
+                  "[b]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
+                  "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1")
+
+        cmd = ['ffmpeg', '-i', input_path,
+               '-vf', vf,
+               '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
+               '-c:a', 'copy',
+               '-y', output_path]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"쇼츠 변환 실패: {result.stderr[-300:]}")
+            return False
+        return True
+    except Exception as e:
+        print(f"쇼츠 변환 실패: {e}")
+        return False
+
+def get_video_size(video_path: str) -> tuple:
+    """(가로, 세로) 해상도 반환"""
+    try:
+        cmd = ['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+               '-show_entries', 'stream=width,height', '-of', 'csv=p=0', video_path]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        w, h = result.stdout.strip().split(',')
+        return int(w), int(h)
+    except Exception:
+        return 0, 0
+
 def change_audio_speed(audio_path: str, output_path: str, speed: float) -> bool:
     """음성 파일 재생 속도 변경 (음정 유지)"""
     try:
