@@ -62,6 +62,49 @@ def get_video_duration(video_path: str) -> float:
         print(f"비디오 길이 조회 실패: {e}")
         return 0
 
+def extract_multi_video_segments(video_paths: list, rows: list, output_path: str) -> bool:
+    """여러 원본 영상에서 구간을 뽑아 순서대로 이어붙임
+
+    rows: [{'video': 1~N, 'start': 초, 'end': 초, 'text': 자막}]
+    시작/종료 시간은 해당 영상 기준.
+    """
+    videos = []
+    try:
+        videos = [VideoFileClip(p) for p in video_paths]
+
+        clips = []
+        for row in rows:
+            idx = min(max(int(row.get('video', 1)) - 1, 0), len(videos) - 1)
+            v = videos[idx]
+            start = max(0.0, float(row['start']))
+            end = min(v.duration, float(row['end']))
+            if start < end:
+                clips.append(v.subclipped(start, end))
+
+        if not clips:
+            return False
+
+        # 해상도가 서로 다르면 compose 방식으로 맞춤
+        sizes = {(c.w, c.h) for c in clips}
+        method = "chain" if len(sizes) == 1 else "compose"
+
+        # 일부 영상에 소리가 없으면 오디오는 있는 것만 사용됨
+        final_video = concatenate_videoclips(clips, method=method)
+        fps = max((v.fps or 24) for v in videos)
+        final_video.write_videofile(output_path, fps=fps, logger=None)
+        final_video.close()
+        return True
+
+    except Exception as e:
+        print(f"다중 영상 편집 실패: {e}")
+        return False
+    finally:
+        for v in videos:
+            try:
+                v.close()
+            except Exception:
+                pass
+
 def extract_video_segments(video_path: str, srt_path: str, output_path: str) -> bool:
     """자막 타이밍에 맞게 비디오 편집 (각 자막 구간만 추출해서 연결)"""
     try:
