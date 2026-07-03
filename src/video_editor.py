@@ -12,6 +12,45 @@ def default_korean_font() -> str:
         return "Apple SD Gothic Neo"
     return "NanumGothic"
 
+def probe_video_codec(video_path: str) -> tuple:
+    """(비디오 코덱, 컨테이너 확장자) 반환"""
+    try:
+        cmd = ['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+               '-show_entries', 'stream=codec_name',
+               '-of', 'default=noprint_wrappers=1:nokey=1', video_path]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        codec = result.stdout.strip().lower()
+        ext = video_path.rsplit('.', 1)[-1].lower() if '.' in video_path else ''
+        return codec, ext
+    except Exception:
+        return '', ''
+
+def make_playable_preview(src: str, dst: str) -> str:
+    """브라우저에서 재생 가능한 미리보기 파일 경로를 반환
+
+    - mp4 + h264 → 원본 그대로 사용 (변환 없음)
+    - h264인데 컨테이너만 다름(mkv 등) → 재인코딩 없이 mp4로 재포장 (빠름)
+    - 그 외 코덱 → 480p h264로 변환 (미리보기 전용)
+    """
+    codec, ext = probe_video_codec(src)
+
+    if codec == 'h264' and ext == 'mp4':
+        return src
+
+    if codec == 'h264':
+        cmd = ['ffmpeg', '-i', src, '-c', 'copy', '-movflags', '+faststart', '-y', dst]
+    else:
+        cmd = ['ffmpeg', '-i', src,
+               '-vf', "scale=-2:'min(480,ih)'",
+               '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28',
+               '-c:a', 'aac', '-movflags', '+faststart', '-y', dst]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode == 0:
+        return dst
+    print(f"미리보기 변환 실패: {result.stderr[-300:]}")
+    return src  # 실패하면 원본이라도 시도
+
 def get_video_duration(video_path: str) -> float:
     """비디오 길이 반환 (초)"""
     try:

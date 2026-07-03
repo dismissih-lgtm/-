@@ -3,7 +3,10 @@ import streamlit as st
 import pandas as pd
 from src.subtitle_remover import remove_subtitles
 from src.subtitle_generator import build_srt_from_rows, retime_rows_cumulative, save_srt
-from src.video_editor import get_video_duration, extract_video_segments, add_subtitles_to_video
+from src.video_editor import (
+    get_video_duration, extract_video_segments, add_subtitles_to_video,
+    make_playable_preview,
+)
 
 st.set_page_config(page_title="동영상 편집 프로그램", page_icon="🎬", layout="wide")
 
@@ -119,18 +122,28 @@ uploaded = st.file_uploader("동영상 파일을 선택하세요", type=["mp4", 
 if uploaded is not None:
     # 새 파일이 올라온 경우에만 저장 (rerun마다 다시 쓰지 않도록)
     if st.session_state.get("uploaded_name") != uploaded.name:
-        input_path = os.path.join("temp", "input_video.mp4")
+        ext = uploaded.name.rsplit(".", 1)[-1].lower() if "." in uploaded.name else "mp4"
+        input_path = os.path.join("temp", f"input_video.{ext}")
         with open(input_path, "wb") as f:
             f.write(uploaded.getbuffer())
         st.session_state.uploaded_name = uploaded.name
         st.session_state.input_path = input_path
         # 이전 작업 상태 초기화
-        for key in ("clean_path", "duration", "rows", "result_path", "result_srt"):
+        for key in ("clean_path", "duration", "rows", "rows_source",
+                    "result_path", "result_srt", "preview_input", "preview_clean"):
             st.session_state.pop(key, None)
+
+    # 브라우저에서 재생 가능한 미리보기 준비 (MKV/AVI 등도 재생되도록 자동 변환)
+    if "preview_input" not in st.session_state:
+        with st.spinner("미리보기 준비 중..."):
+            st.session_state.preview_input = make_playable_preview(
+                st.session_state.input_path, os.path.join("temp", "preview_input.mp4")
+            )
 
     col_v, col_i = st.columns([2, 1])
     with col_v:
-        st.video(st.session_state.input_path)
+        st.markdown("**🎞️ 원본 미리보기**")
+        st.video(st.session_state.preview_input)
     with col_i:
         size_mb = os.path.getsize(st.session_state.input_path) / 1e6
         st.metric("파일", st.session_state.uploaded_name)
@@ -161,6 +174,23 @@ if "input_path" in st.session_state:
                 st.rerun()
     else:
         st.success(f"✅ 영상 준비 완료 — 길이 **{st.session_state.duration:.1f}초**")
+
+        # 원본 vs 자막 제거본 비교 미리보기
+        if st.session_state.clean_path != st.session_state.input_path:
+            if "preview_clean" not in st.session_state:
+                with st.spinner("자막 제거본 미리보기 준비 중..."):
+                    st.session_state.preview_clean = make_playable_preview(
+                        st.session_state.clean_path, os.path.join("temp", "preview_clean.mp4")
+                    )
+            col_before, col_after = st.columns(2)
+            with col_before:
+                st.markdown("**🎞️ 원본**")
+                st.video(st.session_state.preview_input)
+            with col_after:
+                st.markdown("**✨ 자막 제거본**")
+                st.video(st.session_state.preview_clean)
+        else:
+            st.caption("자막 제거를 건너뛰어 원본을 그대로 사용합니다.")
 
 # ──────────────────────────────────────────────
 # 3단계. 대본 입력 & 자막 타이밍
