@@ -178,6 +178,74 @@ def change_audio_speed(audio_path: str, output_path: str, speed: float) -> bool:
         print(f"속도 변경 실패: {e}")
         return False
 
+def build_final_audio(duration: float, output_path: str, narration_path: str = None,
+                      bgm_path: str = None, bgm_volume: float = 0.3) -> bool:
+    """내레이션 + 배경음악을 영상 길이에 맞는 하나의 소리로 합침
+
+    - 내레이션은 원래 크기, 배경음악은 지정한 볼륨으로 깔림
+    - 배경음악이 짧으면 반복 재생, 길면 영상 끝에서 잘림
+    """
+    try:
+        t = f"{duration:.3f}"
+        if narration_path and bgm_path:
+            cmd = ['ffmpeg', '-i', narration_path, '-stream_loop', '-1', '-i', bgm_path,
+                   '-filter_complex',
+                   f"[0:a]apad[n];[1:a]volume={bgm_volume}[m];"
+                   f"[n][m]amix=inputs=2:duration=first:normalize=0[out]",
+                   '-map', '[out]', '-t', t, '-c:a', 'aac', '-y', output_path]
+        elif narration_path:
+            cmd = ['ffmpeg', '-i', narration_path, '-af', 'apad', '-t', t,
+                   '-c:a', 'aac', '-y', output_path]
+        elif bgm_path:
+            cmd = ['ffmpeg', '-stream_loop', '-1', '-i', bgm_path,
+                   '-af', f"volume={bgm_volume}", '-t', t,
+                   '-c:a', 'aac', '-y', output_path]
+        else:
+            return False
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"소리 합치기 실패: {result.stderr[-300:]}")
+            return False
+        return True
+    except Exception as e:
+        print(f"소리 합치기 실패: {e}")
+        return False
+
+def make_audio_volume_preview(audio_path: str, output_path: str,
+                              volume: float, max_seconds: int = 20) -> bool:
+    """볼륨이 적용된 짧은 미리듣기 파일 생성"""
+    try:
+        cmd = ['ffmpeg', '-i', audio_path, '-t', str(max_seconds),
+               '-af', f"volume={volume}", '-c:a', 'libmp3lame', '-q:a', '5',
+               '-y', output_path]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+def render_subtitle_style_preview(font_name: str, font_size: int, output_png: str,
+                                  text: str = "자막 미리보기 · 안녕하세요") -> bool:
+    """선택한 글씨체·크기가 실제로 어떻게 보이는지 이미지로 렌더링
+
+    최종 영상과 동일한 렌더러(libass)를 사용하므로 결과가 정확함.
+    """
+    try:
+        srt_path = output_png + ".srt"
+        with open(srt_path, 'w', encoding='utf-8') as f:
+            f.write(f"1\n00:00:00,000 --> 00:00:05,000\n{text}\n")
+        escaped = srt_path.replace('\\', '\\\\').replace(':', '\\:').replace("'", "\\'")
+        style = (f"FontName={font_name},FontSize={font_size},"
+                 f"OutlineColour=&H80000000,BorderStyle=1,Outline=2")
+        cmd = ['ffmpeg', '-f', 'lavfi', '-i', 'color=c=0x303030:s=540x288:d=1',
+               '-vf', f"subtitles='{escaped}':force_style='{style}'",
+               '-frames:v', '1', '-y', output_png]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        return result.returncode == 0
+    except Exception as e:
+        print(f"자막 미리보기 실패: {e}")
+        return False
+
 def replace_video_audio(video_path: str, audio_path: str, output_path: str) -> bool:
     """영상의 소리를 업로드한 음성으로 교체
 

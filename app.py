@@ -10,6 +10,7 @@ from src.video_editor import (
     make_playable_preview, change_audio_speed, replace_video_audio,
     convert_to_shorts, get_video_size, crop_out_subtitles,
     strip_audio, korean_font_choices,
+    build_final_audio, render_subtitle_style_preview, make_audio_volume_preview,
 )
 
 st.set_page_config(page_title="동영상 편집 프로그램", page_icon="🎬", layout="wide")
@@ -505,8 +506,10 @@ if st.session_state.get("clean_paths"):
         # ──────────────────────────────────────
         # 4단계. 음성(내레이션) — 선택
         # ──────────────────────────────────────
-        step_header("4", "음성(내레이션) — 선택 사항", done=bool(st.session_state.get("narr_ready")))
-        st.caption("음성을 준비하면 완성 영상의 소리가 이 음성으로 바뀝니다. 안 하면 원본 소리를 그대로 사용해요.")
+        step_header("4", "음성·배경음악 — 선택 사항",
+                    done=bool(st.session_state.get("narr_ready") or st.session_state.get("bgm_path")))
+        st.caption("음성(내레이션)과 배경음악을 준비하면 완성 영상에 함께 들어갑니다. "
+                   "원본 소리는 이미 제거되었으므로, 둘 다 없으면 무음 영상이 됩니다.")
 
         narr_source = st.radio(
             "음성 준비 방법",
@@ -584,10 +587,54 @@ if st.session_state.get("clean_paths"):
 
             st.session_state.narr_ready = narr_ready
 
-            if st.button("🚫 음성 사용 안 함 (원본 소리 유지)"):
+            if st.button("🚫 음성 사용 안 함"):
                 for k in ("narr_path", "narr_sig", "narr_ready", "narr_spd_cache"):
                     st.session_state.pop(k, None)
                 st.rerun()
+
+        # ── 배경음악 (선택)
+        st.markdown("---")
+        st.markdown("**🎵 배경음악 (선택)** — 내레이션 아래에 잔잔하게 깔립니다. 영상보다 짧으면 자동 반복돼요.")
+        bgm_upload = st.file_uploader(
+            "배경음악 파일 (MP3, WAV, M4A, OGG)",
+            type=["mp3", "wav", "m4a", "aac", "ogg"],
+            key="bgm_uploader",
+        )
+        if bgm_upload is not None:
+            bgm_sig = (bgm_upload.name, bgm_upload.size)
+            if st.session_state.get("bgm_sig") != bgm_sig:
+                ext = bgm_upload.name.rsplit(".", 1)[-1].lower() if "." in bgm_upload.name else "mp3"
+                bgm_path = os.path.join("temp", f"bgm.{ext}")
+                with open(bgm_path, "wb") as f:
+                    f.write(bgm_upload.getbuffer())
+                st.session_state.bgm_sig = bgm_sig
+                st.session_state.bgm_path = bgm_path
+                st.session_state.pop("bgm_prev_key", None)
+
+            col_bv, col_bl = st.columns([1, 2])
+            with col_bv:
+                vol_choice = st.select_slider(
+                    "배경음악 크기",
+                    options=["10%", "20%", "30%", "40%", "50%", "70%", "100%"],
+                    value="30%",
+                )
+                st.session_state.bgm_volume = int(vol_choice.replace("%", "")) / 100
+
+            # 볼륨이 반영된 미리듣기 (앞 20초)
+            bgm_prev_key = (st.session_state.bgm_sig, vol_choice)
+            bgm_prev_path = os.path.join("temp", "bgm_preview.mp3")
+            if st.session_state.get("bgm_prev_key") != bgm_prev_key:
+                with st.spinner("배경음악 미리듣기 준비 중..."):
+                    if make_audio_volume_preview(st.session_state.bgm_path, bgm_prev_path,
+                                                 st.session_state.bgm_volume):
+                        st.session_state.bgm_prev_key = bgm_prev_key
+            with col_bl:
+                st.markdown(f"**🎧 미리듣기** (볼륨 {vol_choice} 적용 · 앞 20초)")
+                if os.path.exists(bgm_prev_path):
+                    st.audio(bgm_prev_path)
+        else:
+            st.session_state.pop("bgm_path", None)
+            st.session_state.pop("bgm_sig", None)
 
         # ──────────────────────────────────────
         # 5단계. 편집 실행
@@ -624,6 +671,28 @@ if st.session_state.get("clean_paths"):
             fsize_choice = st.select_slider("자막 크기", options=["작게", "보통", "크게"], value="보통")
         font_name = font_choices[font_choice]
         font_size = {"작게": 18, "보통": 22, "크게": 28}[fsize_choice]
+
+        # 선택한 글씨체·크기 미리보기 (최종 영상과 동일한 방식으로 그려짐)
+        style_key = (font_name, font_size)
+        style_prev_path = os.path.join("temp", "style_prev.png")
+        if st.session_state.get("style_prev_key") != style_key:
+            if render_subtitle_style_preview(font_name, font_size, style_prev_path,
+                                             text="자막 미리보기 · 안녕하세요"):
+                st.session_state.style_prev_key = style_key
+        if os.path.exists(style_prev_path):
+            st.image(style_prev_path, caption=f"🔤 자막 스타일 미리보기 — {font_choice} · {fsize_choice}", width=440)
+
+        # 소리 준비 상태 안내
+        if st.session_state.get("narr_ready") or st.session_state.get("bgm_path"):
+            sound_parts = []
+            if st.session_state.get("narr_ready"):
+                sound_parts.append("🎙️ 음성")
+            if st.session_state.get("bgm_path"):
+                sound_parts.append(f"🎵 배경음악 (볼륨 {int(st.session_state.get('bgm_volume', 0.3) * 100)}%)")
+            st.info("🔊 완성 영상에 들어갈 소리: " + " + ".join(sound_parts))
+        else:
+            st.warning("🔇 준비된 음성/배경음악이 없어 완성 영상이 **무음**이 됩니다. "
+                       "소리를 넣으려면 4단계에서 음성을 만들거나 배경음악을 올려주세요.")
 
         def apply_output_size(src_path: str) -> str:
             """선택한 출력 크기 적용 (쇼츠 변환)"""
@@ -670,14 +739,23 @@ if st.session_state.get("clean_paths"):
                     else:
                         result_path = None
 
-            # 음성을 올렸으면 완성 영상의 소리를 음성으로 교체
-            if result_path and st.session_state.get("narr_ready"):
-                with st.spinner("음성 입히는 중..."):
+            # 음성·배경음악을 완성 영상에 입히기
+            narr = st.session_state.get("narr_ready")
+            bgm = st.session_state.get("bgm_path")
+            if result_path and (narr or bgm):
+                with st.spinner("🔊 소리(음성·배경음악) 입히는 중..."):
+                    dur = get_video_duration(result_path)
+                    mixed = os.path.join("temp", "final_audio.m4a")
                     voiced = os.path.join("temp", "with_voice.mp4")
-                    if replace_video_audio(result_path, st.session_state.narr_ready, voiced):
+                    ok_audio = build_final_audio(
+                        dur, mixed,
+                        narration_path=narr, bgm_path=bgm,
+                        bgm_volume=st.session_state.get("bgm_volume", 0.3),
+                    )
+                    if ok_audio and replace_video_audio(result_path, mixed, voiced):
                         os.replace(voiced, result_path)
                     else:
-                        st.warning("⚠️ 음성 입히기에 실패해 원본 소리를 유지합니다.")
+                        st.warning("⚠️ 소리 입히기에 실패했습니다. 음성/배경음악 파일을 확인해주세요.")
 
             if result_path:
                 st.session_state.result_path = result_path
