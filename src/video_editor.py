@@ -12,6 +12,40 @@ def default_korean_font() -> str:
         return "Apple SD Gothic Neo"
     return "NanumGothic"
 
+def korean_font_choices() -> dict:
+    """운영체제별 선택 가능한 한글 글씨체 (표시 이름 → 실제 폰트 이름)"""
+    system = platform.system()
+    if system == "Windows":
+        return {
+            "맑은 고딕 (기본)": "Malgun Gothic",
+            "굴림": "Gulim",
+            "돋움": "Dotum",
+            "바탕 (명조풍)": "Batang",
+            "궁서 (붓글씨풍)": "Gungsuh",
+        }
+    if system == "Darwin":
+        return {
+            "애플 고딕 (기본)": "Apple SD Gothic Neo",
+            "애플 명조": "AppleMyungjo",
+            "나눔고딕": "NanumGothic",
+        }
+    return {
+        "나눔고딕 (기본)": "NanumGothic",
+        "나눔명조": "NanumMyeongjo",
+        "나눔바른고딕": "NanumBarunGothic",
+        "나눔스퀘어라운드": "NanumSquareRound",
+    }
+
+def strip_audio(input_path: str, output_path: str) -> bool:
+    """영상의 모든 소리(내레이션·음악) 제거 — 화질 그대로, 빠름"""
+    try:
+        cmd = ['ffmpeg', '-i', input_path, '-c:v', 'copy', '-an', '-sn', '-y', output_path]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        return result.returncode == 0
+    except Exception as e:
+        print(f"소리 제거 실패: {e}")
+        return False
+
 def probe_video_codec(video_path: str) -> tuple:
     """(비디오 코덱, 컨테이너 확장자) 반환"""
     try:
@@ -99,7 +133,7 @@ def convert_to_shorts(input_path: str, output_path: str, style: str = "blur") ->
 
         cmd = ['ffmpeg', '-i', input_path,
                '-vf', vf,
-               '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
+               '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '24',
                '-c:a', 'copy',
                '-y', output_path]
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -258,7 +292,9 @@ def add_subtitles_to_video(video_path: str, srt_path: str, output_path: str,
             'ffmpeg',
             '-i', video_path,
             '-vf', f"subtitles='{escaped_srt}':force_style='{style}'",
-            '-c:a', 'copy',
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '25',  # 용량 절감
+            '-c:a', 'aac', '-b:a', '128k',
+            '-movflags', '+faststart',
             '-y',
             output_path
         ]

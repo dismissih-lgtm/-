@@ -9,6 +9,7 @@ from src.video_editor import (
     get_video_duration, extract_multi_video_segments, add_subtitles_to_video,
     make_playable_preview, change_audio_speed, replace_video_audio,
     convert_to_shorts, get_video_size, crop_out_subtitles,
+    strip_audio, korean_font_choices,
 )
 
 st.set_page_config(page_title="동영상 편집 프로그램", page_icon="🎬", layout="wide")
@@ -163,12 +164,17 @@ if uploads:
     sig = tuple((u.name, u.size) for u in uploads)
     if st.session_state.get("uploaded_sig") != sig:
         videos = []
-        for i, u in enumerate(uploads):
-            ext = u.name.rsplit(".", 1)[-1].lower() if "." in u.name else "mp4"
-            path = os.path.join("temp", f"input_{i}.{ext}")
-            with open(path, "wb") as f:
-                f.write(u.getbuffer())
-            videos.append({"name": u.name, "path": path})
+        with st.spinner("🔇 모든 소리(내레이션·음악) 제거 중..."):
+            for i, u in enumerate(uploads):
+                ext = u.name.rsplit(".", 1)[-1].lower() if "." in u.name else "mp4"
+                path = os.path.join("temp", f"input_{i}.{ext}")
+                with open(path, "wb") as f:
+                    f.write(u.getbuffer())
+                # 업로드 즉시 원본의 모든 소리 제거 (이후 단계는 무음 영상으로 진행)
+                muted = os.path.join("temp", f"input_{i}_mute.mp4")
+                if strip_audio(path, muted):
+                    path = muted
+                videos.append({"name": u.name, "path": path})
         st.session_state.videos = videos
         st.session_state.uploaded_sig = sig
         for key in ("previews", "clean_paths", "clean_names", "clean_previews", "durations",
@@ -189,7 +195,7 @@ if uploads:
         {
             "name": v["name"],
             "path": st.session_state.previews[i],
-            "sub": f"{os.path.getsize(v['path']) / 1e6:.1f} MB",
+            "sub": f"🔇 소리 제거됨 · {os.path.getsize(v['path']) / 1e6:.1f} MB",
         }
         for i, v in enumerate(videos)
     ])
@@ -610,6 +616,15 @@ if st.session_state.get("clean_paths"):
                 help="쇼츠/릴스용 9:16 세로 영상으로 만듭니다.",
             )
 
+        font_choices = korean_font_choices()
+        col_font, col_fsize = st.columns(2)
+        with col_font:
+            font_choice = st.selectbox("🔤 자막 글씨체", list(font_choices.keys()))
+        with col_fsize:
+            fsize_choice = st.select_slider("자막 크기", options=["작게", "보통", "크게"], value="보통")
+        font_name = font_choices[font_choice]
+        font_size = {"작게": 18, "보통": 22, "크게": 28}[fsize_choice]
+
         def apply_output_size(src_path: str) -> str:
             """선택한 출력 크기 적용 (쇼츠 변환)"""
             if size_choice.startswith("원본"):
@@ -636,7 +651,8 @@ if st.session_state.get("clean_paths"):
                         if "새 자막" in mode:
                             save_srt(build_srt_from_rows(retimed), srt_path)
                             result_path = os.path.join("output", "edited_with_subs.mp4")
-                            if not add_subtitles_to_video(cut_path, srt_path, result_path):
+                            if not add_subtitles_to_video(cut_path, srt_path, result_path,
+                                                          font_name=font_name, font_size=font_size):
                                 result_path = None
                         else:
                             result_path = os.path.join("output", "edited_video.mp4")
@@ -648,7 +664,8 @@ if st.session_state.get("clean_paths"):
                     src = apply_output_size(clean_paths[0])  # 쇼츠 변환 (자막 입히기 전)
                     save_srt(build_srt_from_rows(rows), srt_path)
                     result_path = os.path.join("output", "video_with_subs.mp4")
-                    if add_subtitles_to_video(src, srt_path, result_path):
+                    if add_subtitles_to_video(src, srt_path, result_path,
+                                              font_name=font_name, font_size=font_size):
                         st.session_state.result_srt = build_srt_from_rows(rows)
                     else:
                         result_path = None
@@ -680,15 +697,21 @@ if st.session_state.get("result_path") and os.path.exists(st.session_state.resul
     """, unsafe_allow_html=True)
 
     result_path = st.session_state.result_path
-    col_v, col_d = st.columns([2, 1])
+    rw, rh = get_video_size(result_path)
+
+    # 세로(쇼츠) 영상은 미리보기를 작게 — 화면을 꽉 채우지 않도록
+    if rh > rw:
+        col_v, col_d, _ = st.columns([1, 1.2, 0.8])
+    else:
+        col_v, col_d = st.columns([2, 1])
 
     with col_v:
         st.video(result_path)
 
     with col_d:
         st.metric("결과 영상 길이", f"{get_video_duration(result_path):.1f}초")
-        rw, rh = get_video_size(result_path)
         st.metric("해상도", f"{rw}x{rh}" + (" 📱 쇼츠" if (rw, rh) == (1080, 1920) else ""))
+        st.metric("파일 크기", f"{os.path.getsize(result_path) / 1e6:.1f} MB")
         with open(result_path, "rb") as f:
             st.download_button(
                 "💾 동영상 다운로드",
