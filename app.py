@@ -1,5 +1,6 @@
 import os
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 from src.subtitle_remover import remove_subtitles
 from src.hard_sub_remover import remove_hard_subtitles, BANDS
@@ -230,16 +231,24 @@ if st.session_state.get("videos"):
             )
             crop_amount = int(crop_pct.replace("%", "")) / 100
 
-        with st.expander("🌐 최고 품질이 필요하면 — vmake AI 사이트 이용 (외부 서비스)"):
+        with st.expander("🌐 vmake AI로 지우기 — 화면을 자르지 않고 최고 품질 (외부 서비스)"):
             st.markdown(
-                "AI 인페인팅 전문 서비스 [vmake AI](https://vmake.ai/remove-subtitles-from-video)를 쓰면 "
-                "화면을 자르지 않고도 자막을 가장 깔끔하게 지울 수 있어요.\n\n"
-                "1. 아래 버튼으로 vmake 열기 → 영상 업로드 → 자막 제거 → 결과 다운로드\n"
-                "2. 받은 영상을 이 앱 **1단계에 다시 업로드**\n"
-                "3. 2단계에서 **'⏭️ 건너뛰기'** 를 누르고 계속 진행\n\n"
-                "※ 무료는 워터마크 + 720p 제한이 있고, 1080p·워터마크 제거는 유료입니다."
+                "**사용 순서**: 아래 창에서 로그인 → 영상 업로드 → 자막 제거 → 결과 다운로드 → "
+                "받은 영상을 이 앱 **1단계에 다시 업로드**하고 2단계에서 **'⏭️ 건너뛰기'**"
             )
-            st.link_button("🌐 vmake 자막 제거 열기", "https://vmake.ai/remove-subtitles-from-video")
+            tab_embed, tab_help = st.tabs(["🖥️ 앱 안에서 열기", "❓ 창이 비어 보이면"])
+            with tab_embed:
+                components.iframe(
+                    "https://vmake.ai/video-watermark-remover/upload",
+                    height=720,
+                    scrolling=True,
+                )
+            with tab_help:
+                st.markdown(
+                    "vmake가 내장 표시를 차단하는 경우 위 창이 하얗게 보일 수 있어요. "
+                    "그럴 땐 아래 버튼으로 새 탭에서 여세요."
+                )
+                st.link_button("🌐 새 탭에서 vmake 열기", "https://vmake.ai/remove-subtitles-from-video")
 
         col_a, col_b = st.columns(2)
         with col_a:
