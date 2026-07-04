@@ -171,8 +171,8 @@ if uploads:
             videos.append({"name": u.name, "path": path})
         st.session_state.videos = videos
         st.session_state.uploaded_sig = sig
-        for key in ("previews", "clean_paths", "clean_previews", "durations",
-                    "rows", "rows_source", "result_path", "result_srt"):
+        for key in ("previews", "clean_paths", "clean_names", "clean_previews", "durations",
+                    "vmake_sig", "rows", "rows_source", "result_path", "result_srt"):
             st.session_state.pop(key, None)
 
     videos = st.session_state.videos
@@ -250,6 +250,33 @@ if st.session_state.get("videos"):
                 )
                 st.link_button("🌐 새 탭에서 vmake 열기", "https://vmake.ai/remove-subtitles-from-video")
 
+            st.divider()
+            st.markdown("**📥 vmake에서 받은 영상을 여기에 올리면 바로 다음 단계로 이어집니다** (1~3개)")
+            vmake_files = st.file_uploader(
+                "vmake 결과 영상 업로드",
+                type=["mp4", "avi", "mov", "mkv", "webm"],
+                accept_multiple_files=True,
+                key="vmake_results",
+            )
+            if vmake_files:
+                vmake_files = vmake_files[:3]
+                vm_sig = tuple((u.name, u.size) for u in vmake_files)
+                if st.session_state.get("vmake_sig") != vm_sig:
+                    clean_paths, clean_names = [], []
+                    for i, u in enumerate(vmake_files):
+                        ext = u.name.rsplit(".", 1)[-1].lower() if "." in u.name else "mp4"
+                        path = os.path.join("temp", f"vmake_{i}.{ext}")
+                        with open(path, "wb") as f:
+                            f.write(u.getbuffer())
+                        clean_paths.append(path)
+                        clean_names.append(u.name)
+                    st.session_state.vmake_sig = vm_sig
+                    st.session_state.clean_paths = clean_paths
+                    st.session_state.clean_names = clean_names
+                    st.session_state.durations = [get_video_duration(p) for p in clean_paths]
+                    st.session_state.pop("clean_previews", None)
+                    st.rerun()
+
         col_a, col_b = st.columns(2)
         with col_a:
             if st.button("🗑️ 자막 제거 시작", type="primary"):
@@ -281,6 +308,7 @@ if st.session_state.get("videos"):
                         break
                 if ok:
                     st.session_state.clean_paths = clean_paths
+                    st.session_state.clean_names = [v["name"] for v in videos]
                     st.session_state.durations = [get_video_duration(p) for p in clean_paths]
                     st.rerun()
                 else:
@@ -288,18 +316,21 @@ if st.session_state.get("videos"):
         with col_b:
             if st.button("⏭️ 건너뛰기 (자막 없는 원본)"):
                 st.session_state.clean_paths = [v["path"] for v in videos]
+                st.session_state.clean_names = [v["name"] for v in videos]
                 st.session_state.durations = [get_video_duration(v["path"]) for v in videos]
                 st.rerun()
     else:
         durations = st.session_state.durations
         total_dur = sum(durations)
+        clean_names = st.session_state.get("clean_names", [v["name"] for v in videos])
         st.success(
-            f"✅ 영상 {len(videos)}개 준비 완료 — 총 길이 **{total_dur:.1f}초** "
+            f"✅ 영상 {len(st.session_state.clean_paths)}개 준비 완료 — 총 길이 **{total_dur:.1f}초** "
             f"({' + '.join(f'{d:.0f}초' for d in durations)})"
         )
 
         # 자막 제거본 미리보기 (건너뛴 경우는 생략)
         if st.session_state.clean_paths[0] != videos[0]["path"]:
+            is_vmake = st.session_state.get("vmake_sig") is not None
             if "clean_previews" not in st.session_state:
                 with st.spinner("자막 제거본 미리보기 준비 중..."):
                     st.session_state.clean_previews = [
@@ -307,8 +338,9 @@ if st.session_state.get("videos"):
                         for i, p in enumerate(st.session_state.clean_paths)
                     ]
             video_grid([
-                {"name": v["name"], "path": st.session_state.clean_previews[i], "sub": "✨ 자막 제거본"}
-                for i, v in enumerate(videos)
+                {"name": clean_names[i], "path": st.session_state.clean_previews[i],
+                 "sub": "🌐 vmake 결과" if is_vmake else "✨ 자막 제거본"}
+                for i in range(len(st.session_state.clean_paths))
             ])
         else:
             st.caption("자막 제거를 건너뛰어 원본을 그대로 사용합니다.")
@@ -317,19 +349,46 @@ if st.session_state.get("videos"):
 # 3단계. 대본 입력 & 자막 타이밍
 # ──────────────────────────────────────────────
 if st.session_state.get("clean_paths"):
-    videos = st.session_state.videos
     durations = st.session_state.durations
     total_dur = sum(durations)
-    n_videos = len(videos)
+    n_videos = len(st.session_state.clean_paths)
 
-    step_header("3", "대본 입력 & 자막 타이밍", done=bool(st.session_state.get("rows")))
+    step_header("3", "대본 입력 & 자막 생성", done=bool(st.session_state.get("rows")))
 
-    script_text = st.text_area(
-        "대본을 입력하세요 (한 줄이 자막 하나가 됩니다)",
-        placeholder="안녕하세요\n오늘은 요리 영상입니다\n먼저 재료를 준비해주세요\n감사합니다",
-        height=160,
-        key="script_text",
+    script_source = st.radio(
+        "대본 입력 방법",
+        ["✍️ 직접 입력", "📄 대본/지침 파일 업로드 (.txt)"],
+        horizontal=True,
     )
+
+    if script_source.startswith("📄"):
+        script_file = st.file_uploader(
+            "대본 파일을 올리세요 — 한 줄이 자막 하나가 됩니다",
+            type=["txt", "md"],
+            key="script_file",
+        )
+        if script_file is not None:
+            sfile_sig = (script_file.name, script_file.size)
+            if st.session_state.get("script_file_sig") != sfile_sig:
+                raw = script_file.getvalue()
+                try:
+                    loaded_text = raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    loaded_text = raw.decode("cp949", errors="replace")  # 한글 윈도우 메모장 파일
+                st.session_state["script_text_from_file"] = loaded_text
+                st.session_state.script_file_sig = sfile_sig
+        script_text = st.text_area(
+            "불러온 대본 (여기서 수정할 수 있어요)",
+            height=160,
+            key="script_text_from_file",
+        )
+    else:
+        script_text = st.text_area(
+            "대본을 입력하세요 (한 줄이 자막 하나가 됩니다)",
+            placeholder="안녕하세요\n오늘은 요리 영상입니다\n먼저 재료를 준비해주세요\n감사합니다",
+            height=160,
+            key="script_text",
+        )
 
     lines = [line.strip() for line in (script_text or "").split("\n") if line.strip()]
 
@@ -432,6 +491,10 @@ if st.session_state.get("clean_paths"):
                 continue
         if not rows:
             st.warning("⚠️ 표에 올바른 구간이 없습니다. 시작/종료 시간을 확인해주세요.")
+        else:
+            with st.expander(f"📄 생성된 자막 미리보기 (SRT · {len(rows)}개)"):
+                st.caption("완성 영상 기준 타이밍입니다. 파일은 편집 완료 후 다운로드할 수 있어요.")
+                st.code(build_srt_from_rows(retime_rows_cumulative(rows)), language=None)
 
         # ──────────────────────────────────────
         # 4단계. 음성(내레이션) — 선택
