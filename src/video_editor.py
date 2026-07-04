@@ -51,6 +51,34 @@ def make_playable_preview(src: str, dst: str) -> str:
     print(f"미리보기 변환 실패: {result.stderr[-300:]}")
     return src  # 실패하면 원본이라도 시도
 
+def crop_out_subtitles(input_path: str, output_path: str,
+                       top_ratio: float = 0.0, bottom_ratio: float = 0.0) -> bool:
+    """자막이 있는 위/아래 띠를 화면에서 통째로 잘라냄 — 흔적 없이 깔끔, 빠름"""
+    try:
+        w, h = get_video_size(input_path)
+        if w == 0:
+            return False
+        y0 = int(h * top_ratio)
+        y0 -= y0 % 2
+        h_out = h - y0 - int(h * bottom_ratio)
+        h_out -= h_out % 2
+        if h_out < h * 0.4:  # 화면이 너무 많이 잘리는 것 방지
+            return False
+
+        cmd = ['ffmpeg', '-i', input_path,
+               '-vf', f"crop={w}:{h_out}:0:{y0}",
+               '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
+               '-c:a', 'copy', '-sn',
+               '-y', output_path]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"자막 잘라내기 실패: {result.stderr[-300:]}")
+            return False
+        return True
+    except Exception as e:
+        print(f"자막 잘라내기 실패: {e}")
+        return False
+
 def convert_to_shorts(input_path: str, output_path: str, style: str = "blur") -> bool:
     """쇼츠 세로 형식(9:16, 1080x1920)으로 변환
 

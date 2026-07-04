@@ -7,7 +7,7 @@ from src.subtitle_generator import build_srt_from_rows, retime_rows_cumulative, 
 from src.video_editor import (
     get_video_duration, extract_multi_video_segments, add_subtitles_to_video,
     make_playable_preview, change_audio_speed, replace_video_audio,
-    convert_to_shorts, get_video_size,
+    convert_to_shorts, get_video_size, crop_out_subtitles,
 )
 
 st.set_page_config(page_title="동영상 편집 프로그램", page_icon="🎬", layout="wide")
@@ -204,32 +204,58 @@ if st.session_state.get("videos"):
         removal_mode = st.radio(
             "제거 방식",
             [
-                "🧽 화면에 새겨진 자막 지우기 — 중국어 자막 등 (추천)",
+                "✂️ 자막 띠 잘라내기 — 빠르고 흔적 없이 깔끔 (추천)",
+                "🧽 글자 지우기(배경 복원) — 화면 유지, 대신 뭉개짐·시간 소요",
                 "⚡ 빠른 제거 — 파일 속 자막 트랙만 (켜고 끄는 자막)",
             ],
-            help="영상 화면에 글자가 박혀 있으면 '화면에 새겨진 자막 지우기'를 선택하세요. "
-                 "글자를 찾아 주변 배경으로 복원하며, 영상 길이만큼 시간이 걸립니다.",
+            help="✂️ 잘라내기: 자막이 있는 위/아래 부분을 화면에서 통째로 잘라냅니다. "
+                 "쇼츠(흐린 배경)로 만들면 잘린 부분이 채워져 티가 나지 않아요.",
         )
 
-        if removal_mode.startswith("🧽"):
+        band_choice = "상단+하단"
+        crop_amount = 0.25
+        if removal_mode.startswith("✂️") or removal_mode.startswith("🧽"):
             band_choice = st.radio(
                 "자막 위치",
-                list(BANDS.keys()),
+                ["상단만", "하단만", "상단+하단"],
                 horizontal=True,
-                help="자막이 있는 위치를 고르면 그 부분만 검사해서 빠르고 정확해집니다.",
+                help="자막이 화면 어디에 있는지 고르세요.",
             )
-        else:
-            band_choice = "상단+하단"
+        if removal_mode.startswith("✂️"):
+            crop_pct = st.select_slider(
+                "잘라낼 폭 (화면 높이 기준)",
+                options=["15%", "20%", "25%", "30%", "35%"],
+                value="25%",
+                help="자막이 걸쳐 있는 만큼 잘라냅니다. 미리보기로 확인 후 부족하면 늘리세요.",
+            )
+            crop_amount = int(crop_pct.replace("%", "")) / 100
+
+        with st.expander("🌐 최고 품질이 필요하면 — vmake AI 사이트 이용 (외부 서비스)"):
+            st.markdown(
+                "AI 인페인팅 전문 서비스 [vmake AI](https://vmake.ai/remove-subtitles-from-video)를 쓰면 "
+                "화면을 자르지 않고도 자막을 가장 깔끔하게 지울 수 있어요.\n\n"
+                "1. 아래 버튼으로 vmake 열기 → 영상 업로드 → 자막 제거 → 결과 다운로드\n"
+                "2. 받은 영상을 이 앱 **1단계에 다시 업로드**\n"
+                "3. 2단계에서 **'⏭️ 건너뛰기'** 를 누르고 계속 진행\n\n"
+                "※ 무료는 워터마크 + 720p 제한이 있고, 1080p·워터마크 제거는 유료입니다."
+            )
+            st.link_button("🌐 vmake 자막 제거 열기", "https://vmake.ai/remove-subtitles-from-video")
 
         col_a, col_b = st.columns(2)
         with col_a:
             if st.button("🗑️ 자막 제거 시작", type="primary"):
                 clean_paths = []
                 ok = True
-                hard_mode = removal_mode.startswith("🧽")
                 for i, v in enumerate(videos):
                     clean = os.path.join("temp", f"clean_{i}.mp4")
-                    if hard_mode:
+                    if removal_mode.startswith("✂️"):
+                        top = crop_amount if "상단" in band_choice else 0.0
+                        bottom = crop_amount if "하단" in band_choice else 0.0
+                        with st.spinner(f"✂️ {v['name']} — 자막 띠 잘라내는 중..."):
+                            done = crop_out_subtitles(v["path"], clean, top, bottom)
+                        if not done:
+                            st.error("❌ 잘라낼 폭이 너무 큽니다. 폭을 줄여보세요.")
+                    elif removal_mode.startswith("🧽"):
                         bar = st.progress(0.0, text=f"🧽 {v['name']} — 자막 지우는 중... (영상 길이만큼 걸려요)")
                         done = remove_hard_subtitles(
                             v["path"], clean, bands=BANDS[band_choice],
