@@ -15,5 +15,8 @@ env/
 output/
 *.log
 
+# 자동 다운로드되는 폰트
+assets/fonts/
+
 # 로컬 자동 게시 설정 (기기마다 다름)
 settings.json

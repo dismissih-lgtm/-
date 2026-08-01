@@ -6,6 +6,7 @@
 - 🎨 이미지: OpenAI **DALL·E 3**
 - ✍️ 캡션·해시태그: **Claude** (`claude-opus-4-8`)
 - 📰 뉴스 검색: **Claude 내장 web_search** (추가 API 키 불필요)
+- 🛒 **쿠팡 파트너스 카드뉴스**: 파트너스 URL → 인스타 규격 카드뉴스 3~4장 자동 생성
 - ⏰ 자동 실행: 매일 **한국 시간 오전 6시** (시간 변경 가능)
 - 📬 전송 방법 (둘 중 선택):
   - 💬 **카카오톡으로 받기** — 페이스북/인스타 없이 바로 사용, 받아서 직접 게시 → [SETUP_KAKAO.md](SETUP_KAKAO.md)
@@ -96,6 +97,37 @@ python -m src.main "가을 감성 카페 신메뉴 홍보"
 
 ---
 
+## 4-3. 쿠팡 파트너스 카드뉴스 만들기 🛒
+
+쿠팡 파트너스 링크를 주면 **상품을 검색**해 인스타그램 규격(1:1 또는 4:5)의
+**카드뉴스 이미지 3~4장 + 캡션(해시태그·파트너스 고지 포함)** 을 만들어줍니다.
+
+**웹 UI에서 (추천):** `streamlit run app.py` → **🛒 쿠팡 카드뉴스** 탭
+- 파트너스 URL 붙여넣기 → 카드 장수(3/4), 테마(딥 네이비/웜 크림/차콜 민트), 비율 선택 → 생성
+- 미리보기 확인 후 **zip 다운로드** → 인스타그램에 여러 장 게시물(캐러셀)로 업로드
+
+**명령줄에서:**
+
+```bash
+python -m src.coupang "https://link.coupang.com/a/xxxxx"
+python -m src.coupang "https://link.coupang.com/a/xxxxx" --cards 3 --theme "웜 크림" --ratio 4:5
+```
+
+결과물은 `output/coupang_날짜시간/` 폴더에 `card_N.png` 와 `caption.txt` 로 저장됩니다.
+
+> ⚠️ **알아두세요**
+> - 쿠팡은 봇 접근을 차단하는 경우가 많아 상품 정보 자동 수집이 실패할 수 있습니다.
+>   그 경우 UI의 "상품 정보 직접 입력"(CLI는 `--name`, `--price`, `--features`)으로
+>   상품명만 넣어주면 나머지 문구는 AI가 만들어줍니다.
+> - 캡션에 포함되는 **쿠팡 파트너스 고지 문구**("이 포스팅은 쿠팡 파트너스 활동의
+>   일환으로...")는 파트너스 약관상 **필수**이니 지우지 마세요. 마지막 카드에도
+>   자동으로 들어갑니다.
+> - 한글 폰트(Noto Sans KR)는 최초 실행 시 `assets/fonts/` 에 자동 다운로드됩니다.
+> - 인스타그램 자동 업로드(캐러셀)는 공개 이미지 URL이 필요해 지원하지 않습니다.
+>   다운로드한 이미지를 직접 올려주세요.
+
+---
+
 ## 5. 오늘의 뉴스로 자동 게시
 
 주제를 직접 정하지 않고, **오늘의 뉴스를 검색해서** 게시물을 만들 수 있습니다.
@@ -183,6 +215,9 @@ nohup python -m src.scheduler >> output/scheduler.log 2>&1 &
 │   ├── image_generator.py     # DALL·E 3 이미지 생성
 │   ├── caption_generator.py   # Claude 캡션·해시태그 생성
 │   ├── news_fetcher.py        # Claude web_search 로 오늘의 뉴스 검색
+│   ├── coupang_fetcher.py     # 쿠팡 파트너스 URL → 상품 정보 수집
+│   ├── card_generator.py      # 카드뉴스 문구 생성 + PNG 렌더링 (Pillow)
+│   ├── coupang.py             # 쿠팡 카드뉴스 명령줄 실행 (python -m src.coupang)
 │   ├── instagram_publisher.py # Graph API 업로드 (컨테이너 생성 → 발행)
 │   ├── kakao_sender.py        # 카카오톡 '나에게 보내기' 전송
 │   ├── settings.py            # 자동 실행 설정 저장/로드 (settings.json)

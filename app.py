@@ -3,12 +3,15 @@
 실행:
     streamlit run app.py
 
-탭 두 개로 구성됩니다.
+탭 세 개로 구성됩니다.
   - ✍️ 직접 만들기 : 보면서 이미지·캡션을 만들고 업로드 (수동)
+  - 🛒 쿠팡 카드뉴스 : 쿠팡 파트너스 URL → 카드뉴스 3~4장 생성
   - ⏰ 자동 게시 설정 : 매일 자동 게시 시간/켜짐 설정 + 지금 한 번 실행
 """
 
 import datetime
+import io
+import zipfile
 
 import streamlit as st
 
@@ -19,6 +22,8 @@ st.title("📸 인스타그램 게시물 자동 생성")
 try:
     from src import (
         caption_generator,
+        card_generator,
+        coupang_fetcher,
         image_generator,
         kakao_sender,
         main,
@@ -53,7 +58,9 @@ def _generate(image_topic: str, caption_topic: str, headline: str | None) -> Non
 
 
 if setup_ok:
-    tab_manual, tab_auto = st.tabs(["✍️ 직접 만들기", "⏰ 자동 게시 설정"])
+    tab_manual, tab_coupang, tab_auto = st.tabs(
+        ["✍️ 직접 만들기", "🛒 쿠팡 카드뉴스", "⏰ 자동 게시 설정"]
+    )
 
     # ─────────────────────────────────────────────────────
     # 탭 1: 직접 만들기 (수동)
@@ -144,7 +151,121 @@ if setup_ok:
             )
 
     # ─────────────────────────────────────────────────────
-    # 탭 2: 자동 게시 설정
+    # 탭 2: 쿠팡 파트너스 카드뉴스
+    # ─────────────────────────────────────────────────────
+    with tab_coupang:
+        st.caption(
+            "쿠팡 파트너스 링크를 넣으면 상품을 검색해 인스타그램 규격의 "
+            "카드뉴스 이미지 3~4장과 캡션을 만듭니다."
+        )
+        cp_url = st.text_input(
+            "쿠팡 파트너스 URL",
+            placeholder="https://link.coupang.com/a/xxxxx",
+            key="cp_url",
+        )
+
+        with st.expander("상품 정보 직접 입력 (자동 수집이 실패할 때)"):
+            cp_name = st.text_input("상품명", key="cp_name")
+            cp_price = st.text_input("가격 (예: 29,900원)", key="cp_price")
+            cp_features = st.text_area(
+                "특징 (한 줄에 하나씩)", key="cp_features", height=110
+            )
+
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            cp_cards = st.radio("카드 장수", [4, 3], horizontal=True, key="cp_cards")
+        with col2:
+            cp_theme = st.selectbox("테마", list(card_generator.THEMES), key="cp_theme")
+        with col3:
+            cp_ratio = st.selectbox(
+                "비율", list(card_generator.RATIOS), key="cp_ratio",
+                help="1:1 정사각형 / 4:5 세로형 (인스타 피드 최대)",
+            )
+        with col4:
+            cp_handle = st.text_input("인스타 핸들 (선택)", placeholder="@my_shop", key="cp_handle")
+
+        if st.button("🎨 카드뉴스 생성", type="primary", key="cp_generate"):
+            manual_name = cp_name.strip()
+            if not cp_url.strip() and not manual_name:
+                st.warning("쿠팡 파트너스 URL을 입력하세요.")
+                st.stop()
+            with st.spinner("상품 검색 → 문구 생성 → 카드 렌더링 중... (30~60초 걸려요)"):
+                try:
+                    features = [f.strip() for f in cp_features.splitlines() if f.strip()]
+                    if manual_name:
+                        product = {
+                            "name": manual_name, "price": cp_price.strip(),
+                            "category": "", "url": cp_url.strip(),
+                            "features": features, "summary": "",
+                        }
+                    else:
+                        product = coupang_fetcher.fetch_product_info(cp_url.strip())
+                        if cp_price.strip():
+                            product["price"] = cp_price.strip()
+                        if features:
+                            product["features"] = features
+
+                    if not product.get("name"):
+                        st.error(
+                            "상품 정보를 찾지 못했습니다 (쿠팡이 접근을 차단했을 수 "
+                            "있어요). 위의 '상품 정보 직접 입력'에 상품명을 넣고 "
+                            "다시 시도해 주세요."
+                        )
+                        st.stop()
+
+                    copy_data = card_generator.generate_copy(product, n_cards=cp_cards)
+                    out_dir = (
+                        "output/coupang_"
+                        + datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                    )
+                    paths = card_generator.render_cards(
+                        copy_data, out_dir, theme_name=cp_theme,
+                        ratio=cp_ratio, handle=cp_handle.strip(),
+                    )
+                    st.session_state.cp_paths = [str(p) for p in paths]
+                    st.session_state.cp_caption = card_generator.format_caption(
+                        copy_data, url=cp_url.strip()
+                    )
+                    st.session_state.cp_product_name = product["name"]
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"생성 실패: {exc}")
+
+        if st.session_state.get("cp_paths"):
+            st.divider()
+            st.subheader("미리보기")
+            st.caption(f"🛒 {st.session_state.get('cp_product_name', '')}")
+
+            cols = st.columns(len(st.session_state.cp_paths))
+            for col, path in zip(cols, st.session_state.cp_paths):
+                with col:
+                    st.image(path, use_container_width=True)
+
+            st.session_state.cp_caption = st.text_area(
+                "캡션 (파트너스 고지 문구 포함 — 복사해서 사용하세요)",
+                st.session_state.cp_caption,
+                height=260,
+            )
+
+            # 이미지 + 캡션을 zip 으로 묶어 다운로드
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as zf:
+                for path in st.session_state.cp_paths:
+                    zf.write(path, path.split("/")[-1])
+                zf.writestr("caption.txt", st.session_state.cp_caption)
+            st.download_button(
+                "📥 카드 이미지 + 캡션 다운로드 (zip)",
+                data=buf.getvalue(),
+                file_name="coupang_cards.zip",
+                mime="application/zip",
+            )
+            st.info(
+                "💡 다운로드한 이미지를 인스타그램에 여러 장 게시물(캐러셀)로 올리고, "
+                "캡션을 붙여넣으세요. 파트너스 링크는 프로필 링크나 댓글에 넣는 것을 "
+                "추천합니다. 쿠팡 파트너스 고지 문구는 반드시 유지해야 해요."
+            )
+
+    # ─────────────────────────────────────────────────────
+    # 탭 3: 자동 게시 설정
     # ─────────────────────────────────────────────────────
     with tab_auto:
         cfg = settings.load()
