@@ -538,14 +538,25 @@ def _promo_footer(img, link_no: str):
     draw.text(((w - tw) / 2, h - 44), PROMO_DISCLOSURE, font=f_small, fill=_PROMO["footer_sub"])
 
 
+def _fit_font(text: str, size: int, weight: int, max_width: float) -> ImageFont.FreeTypeFont:
+    """max_width 에 들어갈 때까지 폰트 크기를 줄입니다."""
+    while size > 18:
+        font = _font(size, weight)
+        if font.getlength(text) <= max_width:
+            return font
+        size -= 2
+    return _font(size, weight)
+
+
 def _promo_circle(img, cx, cy, r, line1, line2):
     """흰 원 + 보라 테두리 + 2줄 텍스트 특징 뱃지."""
     draw = ImageDraw.Draw(img)
     draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(255, 255, 255),
                  outline=_PROMO["ring"], width=5)
     _draw_sparkle(draw, cx + r * 0.62, cy - r * 0.72, 12, _PROMO["ring"])
-    f1 = _font(27, 500)
-    f2 = _font(32, 800)
+    max_w = r * 2 - 36
+    f1 = _fit_font(line1, 27, 500, max_w)
+    f2 = _fit_font(line2, 32, 800, max_w)
     w1, w2 = f1.getlength(line1), f2.getlength(line2)
     draw.text((cx - w1 / 2, cy - 38), line1, font=f1, fill=_PROMO["sub"])
     draw.text((cx - w2 / 2, cy + 2), line2, font=f2, fill=_PROMO["purple_deep"])
