@@ -235,6 +235,26 @@ def _draw_wrapped(draw, font, text, x, y, max_width, fill, line_gap=1.28, max_li
     return y
 
 
+def _fit_image(photo: Image.Image, w: int, h: int) -> Image.Image:
+    """사진을 (w, h) 영역에 꽉 차게(cover) 맞춰 자릅니다."""
+    scale = max(w / photo.width, h / photo.height)
+    resized = photo.resize(
+        (int(photo.width * scale) + 1, int(photo.height * scale) + 1), Image.LANCZOS
+    )
+    left = (resized.width - w) // 2
+    top = (resized.height - h) // 2
+    return resized.crop((left, top, left + w, top + h))
+
+
+def _paste_rounded(base: Image.Image, photo: Image.Image, x: int, y: int,
+                   w: int, h: int, radius: int = 28) -> None:
+    """둥근 모서리로 사진을 붙입니다."""
+    fitted = _fit_image(photo.convert("RGB"), w, h)
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, w - 1, h - 1], radius=radius, fill=255)
+    base.paste(fitted, (x, y), mask)
+
+
 def _gradient(size: tuple[int, int], top: tuple, bottom: tuple) -> Image.Image:
     width, height = size
     img = Image.new("RGB", size)
@@ -286,21 +306,35 @@ def _draw_check(draw, theme, cx, cy, r=22):
     draw.line([cx - r * 0.1, cy + r * 0.35, cx + r * 0.5, cy - r * 0.35], fill=theme["accent_text"], width=line_w)
 
 
-def _render_cover(img, theme, cover, index, total):
+def _render_cover(img, theme, cover, index, total, photo=None):
     draw = ImageDraw.Draw(img)
     width, height = img.size
     max_w = width - _MARGIN * 2
 
-    _draw_badge(draw, theme, cover["badge"], _MARGIN, int(height * 0.14))
+    if photo is not None:
+        # 사진이 있으면: 배지 → 상품 사진 → 헤드라인 → 보조 문장
+        badge_bottom = _draw_badge(draw, theme, cover["badge"], _MARGIN, 78)
+        photo_h = int(height * 0.38)
+        _paste_rounded(img, photo, _MARGIN, badge_bottom + 34, max_w, photo_h)
+        draw = ImageDraw.Draw(img)  # paste 이후 다시 획득
 
-    y = int(height * 0.30)
-    y = _draw_wrapped(draw, _font(86, 800), cover["headline"], _MARGIN, y, max_w,
-                      theme["text"], line_gap=1.24, max_lines=4)
+        y = badge_bottom + 34 + photo_h + 46
+        y = _draw_wrapped(draw, _font(60, 800), cover["headline"], _MARGIN, y, max_w,
+                          theme["text"], line_gap=1.22, max_lines=3)
+        y += 18
+        _draw_wrapped(draw, _font(37, 400), cover["sub"], _MARGIN, y, max_w,
+                      theme["sub"], max_lines=2)
+    else:
+        _draw_badge(draw, theme, cover["badge"], _MARGIN, int(height * 0.14))
 
-    y += 36
-    draw.rounded_rectangle([_MARGIN, y, _MARGIN + 140, y + 10], radius=5, fill=theme["accent"])
-    y += 52
-    _draw_wrapped(draw, _font(42, 400), cover["sub"], _MARGIN, y, max_w, theme["sub"], max_lines=3)
+        y = int(height * 0.30)
+        y = _draw_wrapped(draw, _font(86, 800), cover["headline"], _MARGIN, y, max_w,
+                          theme["text"], line_gap=1.24, max_lines=4)
+
+        y += 36
+        draw.rounded_rectangle([_MARGIN, y, _MARGIN + 140, y + 10], radius=5, fill=theme["accent"])
+        y += 52
+        _draw_wrapped(draw, _font(42, 400), cover["sub"], _MARGIN, y, max_w, theme["sub"], max_lines=3)
 
     hint = "밀어서 넘겨보기"
     font = _font(32, 500)
@@ -335,37 +369,48 @@ def _render_feature(img, theme, feature, point_no, index, total):
     _draw_page_number(draw, img.size, theme, index, total)
 
 
-def _render_cta(img, theme, cta, index, total):
+def _render_cta(img, theme, cta, index, total, photo=None):
     draw = ImageDraw.Draw(img)
     width, height = img.size
     max_w = width - _MARGIN * 2
 
-    y = int(height * 0.20)
-    y = _draw_wrapped(draw, _font(74, 800), cta["title"], _MARGIN, y, max_w,
+    if photo is not None:
+        # 정사각 상품 사진을 상단 중앙에 배치
+        ph = int(height * 0.26)
+        _paste_rounded(img, photo, (width - ph) // 2, int(height * 0.09), ph, ph)
+        draw = ImageDraw.Draw(img)
+        y = int(height * 0.09) + ph + 50
+        title_font = _font(62, 800)
+    else:
+        y = int(height * 0.20)
+        title_font = _font(74, 800)
+
+    y = _draw_wrapped(draw, title_font, cta["title"], _MARGIN, y, max_w,
                       theme["text"], max_lines=3)
 
     if cta.get("price_line"):
         y += 24
-        y = _draw_wrapped(draw, _font(58, 700), cta["price_line"], _MARGIN, y, max_w,
-                          theme["accent"], max_lines=2)
+        y = _draw_wrapped(draw, _font(52 if photo else 58, 700), cta["price_line"],
+                          _MARGIN, y, max_w, theme["accent"], max_lines=2)
 
-    y += 28
-    y = _draw_wrapped(draw, _font(42, 400), cta["sub"], _MARGIN, y, max_w, theme["sub"], max_lines=3)
+    y += 26
+    _draw_wrapped(draw, _font(38 if photo else 42, 400), cta["sub"], _MARGIN, y,
+                  max_w, theme["sub"], max_lines=2 if photo else 3)
 
-    # 링크 안내 박스
+    # 링크 안내 박스 (하단 기준 고정 배치)
     box_text = "구매 링크는 프로필에서 확인"
     box_font = _font(40, 700)
     pad_x, pad_y = 44, 26
     bw = box_font.getlength(box_text) + pad_x * 2
     bx = width / 2 - bw / 2
-    by = y + 60
+    by = height - 296
     draw.rounded_rectangle([bx, by, bx + bw, by + box_font.size + pad_y * 2],
                            radius=18, fill=theme["accent"])
     draw.text((bx + pad_x, by + pad_y), box_text, font=box_font, fill=theme["accent_text"])
 
     # 파트너스 고지 (필수)
     small = _font(24, 400)
-    _draw_wrapped(draw, small, DISCLOSURE, _MARGIN, height - 168, max_w, theme["sub"], max_lines=2)
+    _draw_wrapped(draw, small, DISCLOSURE, _MARGIN, height - 158, max_w, theme["sub"], max_lines=2)
 
     _draw_dots(draw, img.size, theme, index, total)
     _draw_page_number(draw, img.size, theme, index, total)
@@ -377,6 +422,7 @@ def render_cards(
     theme_name: str = "딥 네이비",
     ratio: str = "1:1",
     handle: str = "",
+    product_image: Image.Image | None = None,
 ) -> list[Path]:
     """카드 문구로 PNG 파일들을 렌더링해 경로 목록을 반환합니다."""
     theme = THEMES.get(theme_name) or THEMES["딥 네이비"]
@@ -395,12 +441,12 @@ def render_cards(
     for i, (kind, data) in enumerate(cards):
         img = _gradient(size, theme["bg_top"], theme["bg_bottom"])
         if kind == "cover":
-            _render_cover(img, theme, data, i, total)
+            _render_cover(img, theme, data, i, total, photo=product_image)
         elif kind == "feature":
             point_no = sum(1 for k, _ in cards[: i + 1] if k == "feature")
             _render_feature(img, theme, data, point_no, i, total)
         else:
-            _render_cta(img, theme, data, i, total)
+            _render_cta(img, theme, data, i, total, photo=product_image)
 
         if handle:
             draw = ImageDraw.Draw(img)

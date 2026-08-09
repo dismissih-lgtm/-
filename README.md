@@ -97,28 +97,44 @@ python -m src.main "가을 감성 카페 신메뉴 홍보"
 
 ---
 
-## 4-3. 쿠팡 파트너스 카드뉴스 만들기 🛒
+## 4-3. 쿠팡 파트너스 카드뉴스 만들기 🛒📱
 
-쿠팡 파트너스 링크를 주면 **상품을 검색**해 인스타그램 규격(1:1 또는 4:5)의
-**카드뉴스 이미지 3~4장 + 캡션(해시태그·파트너스 고지 포함)** 을 만들어줍니다.
+**휴대폰에서 쿠팡 상품 화면을 캡처해 올리면**, AI가 캡처에서 상품명·가격·특징을
+읽고 **상품 사진을 잘라내** 인스타그램 규격(1:1 또는 4:5)의 **카드뉴스 이미지
+3~4장 + 캡션(해시태그·파트너스 고지 포함)** 을 만들어줍니다.
+상품 사진은 표지와 마지막 카드에 자동으로 들어갑니다.
 
-**웹 UI에서 (추천):** `streamlit run app.py` → **🛒 쿠팡 카드뉴스** 탭
-- 파트너스 URL 붙여넣기 → 카드 장수(3/4), 테마(딥 네이비/웜 크림/차콜 민트), 비율 선택 → 생성
-- 미리보기 확인 후 **zip 다운로드** → 인스타그램에 여러 장 게시물(캐러셀)로 업로드
+**사용 순서 (휴대폰):**
+
+1. 쿠팡 앱에서 상품 화면(사진·상품명·가격이 보이게)을 **캡처**
+2. 휴대폰 브라우저로 웹 UI 접속 → **🛒 쿠팡 카드뉴스** 탭 → 캡처 업로드
+3. 카드 장수(3/4)·테마·비율 선택 → **생성**
+4. 미리보기 확인 → **zip 다운로드** → 인스타그램에 여러 장 게시물(캐러셀)로 업로드
+
+파트너스 URL은 선택 입력입니다(캡션에 링크를 넣고 싶을 때). URL만으로 만들던
+기존 방식도 그대로 지원합니다.
+
+**휴대폰에서 접속하는 방법:**
+
+- 같은 와이파이의 PC에서 실행: `streamlit run app.py --server.address 0.0.0.0`
+  → 휴대폰 브라우저에서 `http://<PC의 IP>:8501` 접속
+- 또는 [Streamlit Community Cloud](https://streamlit.io/cloud) 에 무료 배포하면
+  어디서든 접속 가능 (Secrets 에 `ANTHROPIC_API_KEY` 등록)
 
 **명령줄에서:**
 
 ```bash
-python -m src.coupang "https://link.coupang.com/a/xxxxx"
-python -m src.coupang "https://link.coupang.com/a/xxxxx" --cards 3 --theme "웜 크림" --ratio 4:5
+python -m src.coupang --image capture.png                 # 화면 캡처로 생성 (추천)
+python -m src.coupang --image capture.png --url "https://link.coupang.com/a/xxxxx"
+python -m src.coupang --url "https://link.coupang.com/a/xxxxx" --cards 3 --theme "웜 크림"
 ```
 
 결과물은 `output/coupang_날짜시간/` 폴더에 `card_N.png` 와 `caption.txt` 로 저장됩니다.
 
 > ⚠️ **알아두세요**
-> - 쿠팡은 봇 접근을 차단하는 경우가 많아 상품 정보 자동 수집이 실패할 수 있습니다.
->   그 경우 UI의 "상품 정보 직접 입력"(CLI는 `--name`, `--price`, `--features`)으로
->   상품명만 넣어주면 나머지 문구는 AI가 만들어줍니다.
+> - 캡처에서 상품 사진 추출이 어색하면 "상품 정보/사진 직접 입력"에서 사진을
+>   직접 올릴 수 있습니다 (CLI는 `--photo`). 정보 인식이 이상하면 `--name`,
+>   `--price`, `--features` 로 덮어쓸 수 있어요.
 > - 캡션에 포함되는 **쿠팡 파트너스 고지 문구**("이 포스팅은 쿠팡 파트너스 활동의
 >   일환으로...")는 파트너스 약관상 **필수**이니 지우지 마세요. 마지막 카드에도
 >   자동으로 들어갑니다.
@@ -216,6 +232,7 @@ nohup python -m src.scheduler >> output/scheduler.log 2>&1 &
 │   ├── caption_generator.py   # Claude 캡션·해시태그 생성
 │   ├── news_fetcher.py        # Claude web_search 로 오늘의 뉴스 검색
 │   ├── coupang_fetcher.py     # 쿠팡 파트너스 URL → 상품 정보 수집
+│   ├── screenshot_analyzer.py # 쿠팡 화면 캡처 → 상품 정보 + 상품 사진 추출 (비전)
 │   ├── card_generator.py      # 카드뉴스 문구 생성 + PNG 렌더링 (Pillow)
 │   ├── coupang.py             # 쿠팡 카드뉴스 명령줄 실행 (python -m src.coupang)
 │   ├── instagram_publisher.py # Graph API 업로드 (컨테이너 생성 → 발행)

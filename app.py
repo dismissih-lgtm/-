@@ -28,6 +28,7 @@ try:
         kakao_sender,
         main,
         news_fetcher,
+        screenshot_analyzer,
         settings,
     )
 
@@ -155,20 +156,34 @@ if setup_ok:
     # ─────────────────────────────────────────────────────
     with tab_coupang:
         st.caption(
-            "쿠팡 파트너스 링크를 넣으면 상품을 검색해 인스타그램 규격의 "
-            "카드뉴스 이미지 3~4장과 캡션을 만듭니다."
+            "휴대폰에서 쿠팡 상품 화면을 **캡처해서 올리면**, 상품 정보를 읽고 "
+            "상품 사진을 잘라내 인스타그램 규격 카드뉴스 3~4장과 캡션을 만듭니다."
         )
+        cp_shot = st.file_uploader(
+            "📱 쿠팡 화면 캡처 업로드",
+            type=["png", "jpg", "jpeg", "webp"],
+            key="cp_shot",
+            help="쿠팡 앱에서 상품 화면(사진·상품명·가격이 보이게)을 캡처해서 올려주세요.",
+        )
+        if cp_shot:
+            st.image(cp_shot, width=180)
+
         cp_url = st.text_input(
-            "쿠팡 파트너스 URL",
+            "쿠팡 파트너스 URL (선택 — 캡션에 링크를 넣고 싶을 때)",
             placeholder="https://link.coupang.com/a/xxxxx",
             key="cp_url",
         )
 
-        with st.expander("상품 정보 직접 입력 (자동 수집이 실패할 때)"):
+        with st.expander("상품 정보/사진 직접 입력 (자동 인식이 이상할 때)"):
             cp_name = st.text_input("상품명", key="cp_name")
             cp_price = st.text_input("가격 (예: 29,900원)", key="cp_price")
             cp_features = st.text_area(
                 "특징 (한 줄에 하나씩)", key="cp_features", height=110
+            )
+            cp_photo = st.file_uploader(
+                "카드에 넣을 상품 사진 (선택 — 캡처에서 자동 추출이 실패할 때)",
+                type=["png", "jpg", "jpeg", "webp"],
+                key="cp_photo",
             )
 
         col1, col2, col3, col4 = st.columns(4)
@@ -186,13 +201,27 @@ if setup_ok:
 
         if st.button("🎨 카드뉴스 생성", type="primary", key="cp_generate"):
             manual_name = cp_name.strip()
-            if not cp_url.strip() and not manual_name:
-                st.warning("쿠팡 파트너스 URL을 입력하세요.")
+            if not (cp_shot or cp_url.strip() or manual_name):
+                st.warning("화면 캡처를 올리거나, URL 또는 상품명을 입력하세요.")
                 st.stop()
-            with st.spinner("상품 검색 → 문구 생성 → 카드 렌더링 중... (30~60초 걸려요)"):
+            with st.spinner("캡처 분석 → 문구 생성 → 카드 렌더링 중... (30~60초 걸려요)"):
                 try:
                     features = [f.strip() for f in cp_features.splitlines() if f.strip()]
-                    if manual_name:
+
+                    # 카드에 넣을 상품 사진 (직접 업로드가 우선)
+                    product_photo = None
+                    if cp_photo:
+                        product_photo = screenshot_analyzer.load_image(cp_photo.getvalue())
+
+                    if cp_shot:
+                        # 캡처 이미지에서 정보 + 상품 사진 추출
+                        product, cropped = screenshot_analyzer.analyze_screenshot(
+                            cp_shot.getvalue()
+                        )
+                        if product_photo is None:
+                            product_photo = cropped
+                        product["url"] = cp_url.strip()
+                    elif manual_name:
                         product = {
                             "name": manual_name, "price": cp_price.strip(),
                             "category": "", "url": cp_url.strip(),
@@ -200,16 +229,20 @@ if setup_ok:
                         }
                     else:
                         product = coupang_fetcher.fetch_product_info(cp_url.strip())
-                        if cp_price.strip():
-                            product["price"] = cp_price.strip()
-                        if features:
-                            product["features"] = features
+
+                    # 직접 입력값이 있으면 우선 적용
+                    if manual_name:
+                        product["name"] = manual_name
+                    if cp_price.strip():
+                        product["price"] = cp_price.strip()
+                    if features:
+                        product["features"] = features
 
                     if not product.get("name"):
                         st.error(
-                            "상품 정보를 찾지 못했습니다 (쿠팡이 접근을 차단했을 수 "
-                            "있어요). 위의 '상품 정보 직접 입력'에 상품명을 넣고 "
-                            "다시 시도해 주세요."
+                            "상품 정보를 찾지 못했습니다. 캡처에 상품명이 잘 보이는지 "
+                            "확인하거나, '상품 정보 직접 입력'에 상품명을 넣고 다시 "
+                            "시도해 주세요."
                         )
                         st.stop()
 
@@ -221,6 +254,7 @@ if setup_ok:
                     paths = card_generator.render_cards(
                         copy_data, out_dir, theme_name=cp_theme,
                         ratio=cp_ratio, handle=cp_handle.strip(),
+                        product_image=product_photo,
                     )
                     st.session_state.cp_paths = [str(p) for p in paths]
                     st.session_state.cp_caption = card_generator.format_caption(
