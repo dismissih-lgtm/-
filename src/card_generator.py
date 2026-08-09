@@ -436,6 +436,238 @@ def _render_cta(img, theme, cta, index, total, photo=None):
     _draw_page_number(draw, img.size, theme, index, total)
 
 
+# ─────────────────────────────────────────────────────
+# 4. 프로모 스타일 렌더링 (밝은 배경 + 상품 크게 + 링크번호 푸터)
+# ─────────────────────────────────────────────────────
+
+_PROMO = {
+    "bg_top": (253, 251, 255), "bg_bottom": (225, 216, 244),
+    "red": (222, 32, 44), "purple": (86, 48, 166), "purple_deep": (58, 36, 120),
+    "text": (45, 35, 75), "sub": (108, 96, 150),
+    "yellow": (255, 209, 59), "ring": (156, 124, 212),
+    "footer_bg": (50, 32, 108), "footer_sub": (196, 184, 232),
+    "banner_bg": (94, 53, 177),
+}
+
+# 쿠팡 파트너스 고지 (프로모 카드 푸터용 — 예시 이미지와 동일한 문구)
+PROMO_DISCLOSURE = "쿠팡 파트너스 활동의 일환으로 일정액의 수수료를 제공받을 수 있습니다."
+
+
+def _promo_bg(size: tuple[int, int]) -> Image.Image:
+    """밝은 라벤더 그라데이션 + 반투명 버블 배경."""
+    img = _gradient(size, _PROMO["bg_top"], _PROMO["bg_bottom"]).convert("RGBA")
+    overlay = Image.new("RGBA", size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(overlay)
+    w, h = size
+    bubbles = [
+        (int(w * 0.06), int(h * 0.55), 46, 26), (int(w * 0.93), int(h * 0.40), 34, 30),
+        (int(w * 0.88), int(h * 0.72), 56, 22), (int(w * 0.12), int(h * 0.80), 30, 30),
+        (int(w * 0.55), int(h * 0.30), 22, 18), (int(w * 0.97), int(h * 0.58), 26, 26),
+    ]
+    for cx, cy, r, alpha in bubbles:
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(150, 110, 220, alpha))
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=(150, 110, 220, alpha + 25), width=3)
+    return Image.alpha_composite(img, overlay)
+
+
+def _draw_sparkle(draw, cx, cy, r, color):
+    """4갈래 반짝이 모양."""
+    draw.polygon(
+        [(cx, cy - r), (cx + r * 0.28, cy - r * 0.28), (cx + r, cy),
+         (cx + r * 0.28, cy + r * 0.28), (cx, cy + r), (cx - r * 0.28, cy + r * 0.28),
+         (cx - r, cy), (cx - r * 0.28, cy - r * 0.28)],
+        fill=color,
+    )
+
+
+def _draw_segments_centered(draw, segments, fonts_colors, y, width):
+    """여러 색 텍스트 조각을 가운데 정렬로 한 줄에 그립니다."""
+    total = sum(f.getlength(t) for (t, _), f in zip(segments, fonts_colors))
+    x = (width - total) / 2
+    for (text, color), font in zip(segments, fonts_colors):
+        draw.text((x, y), text, font=font, fill=color)
+        x += font.getlength(text)
+
+
+def _promo_two_color_title(draw, title_parts, y, width, max_width, base_size=104):
+    """빨강+보라 두 색 큰 제목. 길면 폰트를 줄입니다."""
+    size = base_size
+    while size > 56:
+        font = _font(size, 900)
+        total = sum(font.getlength(t) for t, _ in title_parts)
+        if total <= max_width:
+            break
+        size -= 6
+    font = _font(size, 900)
+    colors = {"red": _PROMO["red"], "purple": _PROMO["purple"]}
+    segs = [(t, colors.get(c, _PROMO["purple"])) for t, c in title_parts]
+    _draw_segments_centered(draw, segs, [font] * len(segs), y, width)
+    return y + int(size * 1.18)
+
+
+def _promo_footer(img, link_no: str):
+    """하단: 검색 안내 바 + 쿠팡 파트너스 고지."""
+    draw = ImageDraw.Draw(img)
+    w, h = img.size
+    bar_h = 150
+    draw.rectangle([0, h - bar_h, w, h], fill=_PROMO["footer_bg"])
+
+    # 돋보기 아이콘
+    f_main = _font(44, 800)
+    text_parts = [("프로필 링크에서 ", (255, 255, 255)),
+                  (f"{link_no}번", _PROMO["yellow"]),
+                  ("을 검색하세요", (255, 255, 255))]
+    total = sum(f_main.getlength(t) for t, _ in text_parts)
+    icon_r = 20
+    start_x = (w - total - 64) / 2 + 64
+    icon_cx = start_x - 46
+    icon_cy = h - bar_h + 56
+    draw.ellipse([icon_cx - icon_r, icon_cy - icon_r, icon_cx + icon_r, icon_cy + icon_r],
+                 outline=(255, 255, 255), width=6)
+    draw.line([icon_cx + icon_r * 0.7, icon_cy + icon_r * 0.7,
+               icon_cx + icon_r * 1.5, icon_cy + icon_r * 1.5], fill=(255, 255, 255), width=6)
+
+    x = start_x
+    y = h - bar_h + 32
+    for text, color in text_parts:
+        draw.text((x, y), text, font=f_main, fill=color)
+        x += f_main.getlength(text)
+
+    f_small = _font(23, 400)
+    tw = f_small.getlength(PROMO_DISCLOSURE)
+    draw.text(((w - tw) / 2, h - 44), PROMO_DISCLOSURE, font=f_small, fill=_PROMO["footer_sub"])
+
+
+def _promo_circle(img, cx, cy, r, line1, line2):
+    """흰 원 + 보라 테두리 + 2줄 텍스트 특징 뱃지."""
+    draw = ImageDraw.Draw(img)
+    draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(255, 255, 255),
+                 outline=_PROMO["ring"], width=5)
+    _draw_sparkle(draw, cx + r * 0.62, cy - r * 0.72, 12, _PROMO["ring"])
+    f1 = _font(27, 500)
+    f2 = _font(32, 800)
+    w1, w2 = f1.getlength(line1), f2.getlength(line2)
+    draw.text((cx - w1 / 2, cy - 38), line1, font=f1, fill=_PROMO["sub"])
+    draw.text((cx - w2 / 2, cy + 2), line2, font=f2, fill=_PROMO["purple_deep"])
+
+
+def render_promo_cards(
+    cards: list[dict],
+    out_dir: str | Path,
+    product_image: Image.Image,
+    link_no: str,
+    ratio: str = "1:1",
+) -> list[Path]:
+    """프로모(밝은) 스타일 카드 렌더링.
+
+    cards 항목 형식:
+      {"kicker": str,                       # 상단 작은 문구
+       "title": [(text, "red"|"purple"), ...],  # 두 색 큰 제목
+       "banner": str,                       # 보라 배너 문구
+       "circles": [(줄1, 줄2) x 3],          # 왼쪽 원형 특징 뱃지 (표지형)
+       "rows": [str, ...],                  # 왼쪽 체크 리스트 (후기/정보형, circles 대신)
+       "tag": str}                          # 사진 위 노란 스티커 (선택)
+
+    모든 카드에 '광고' 표시 + "프로필 링크에서 N번을 검색하세요" + 파트너스 고지가
+    자동으로 들어갑니다. 카드 1장씩 만들려면 cards 에 dict 하나만 넣으면 됩니다.
+    """
+    size = RATIOS.get(ratio) or RATIOS["1:1"]
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    width, height = size
+    paths: list[Path] = []
+
+    for i, card in enumerate(cards):
+        img = _promo_bg(size)
+        draw = ImageDraw.Draw(img)
+
+        # '광고' 표시 (오른쪽 위)
+        f_ad = _font(26, 700)
+        ad_w = f_ad.getlength("광고") + 36
+        draw.rounded_rectangle([width - 56 - ad_w, 42, width - 56, 90], radius=12,
+                               outline=_PROMO["sub"], width=3)
+        draw.text((width - 56 - ad_w + 18, 50), "광고", font=f_ad, fill=_PROMO["sub"])
+
+        # 상단 킥커 + 반짝이
+        f_kicker = _font(40, 700)
+        kw = f_kicker.getlength(card["kicker"])
+        draw.text(((width - kw) / 2, 46), card["kicker"], font=f_kicker, fill=_PROMO["text"])
+        _draw_sparkle(draw, (width - kw) / 2 - 44, 70, 14, _PROMO["ring"])
+
+        # 두 색 큰 제목
+        y = _promo_two_color_title(draw, card["title"], 108, width, width - 160)
+
+        # 보라 배너
+        f_banner = _font(38, 700)
+        bw = f_banner.getlength(card["banner"]) + 100
+        bx = (width - bw) / 2
+        by = y + 12
+        draw.rounded_rectangle([bx, by, bx + bw, by + 74], radius=37, fill=_PROMO["banner_bg"])
+        draw.text((bx + 50, by + 15), card["banner"], font=f_banner, fill=(255, 255, 255))
+
+        # 중앙 영역: 상품 사진 패널 + (원형 뱃지 3개 또는 체크 리스트)
+        top = by + 74 + 36
+        bottom = height - 150 - 30
+        panel_h = bottom - top
+        rows = card.get("rows")
+
+        if rows:
+            # 리스트형 (후기/제품정보 카드): 왼쪽 체크 리스트 + 오른쪽 사진
+            list_w = int(width * 0.52)
+            panel_w = width - list_w - 64 * 2 - 24
+            px = width - 64 - panel_w
+        else:
+            panel_w = min(int(width * 0.52), panel_h)
+            px = width - panel_w - 64
+
+        draw.rounded_rectangle([px, top, px + panel_w, top + panel_h], radius=34,
+                               fill=(255, 255, 255), outline=(214, 202, 240), width=3)
+        _paste_rounded(img, product_image, px + 14, top + 14, panel_w - 28, panel_h - 28,
+                       radius=26, fit="contain")
+        draw = ImageDraw.Draw(img)
+
+        if rows:
+            lx = 64
+            draw.rounded_rectangle([lx, top, lx + list_w, top + panel_h], radius=34,
+                                   fill=(255, 255, 255), outline=(214, 202, 240), width=3)
+            check_theme = {"accent": _PROMO["banner_bg"], "accent_text": (255, 255, 255)}
+            f_row = _font(34, 600)
+            fy = top + 44
+            for row in rows[:5]:
+                _draw_check(draw, check_theme, lx + 54, fy + int(f_row.size * 0.62), r=19)
+                fy = _draw_wrapped(draw, f_row, row, lx + 96, fy, list_w - 136,
+                                   _PROMO["text"], max_lines=2) + 20
+        else:
+            # 왼쪽 원형 특징 뱃지 3개
+            r = min(102, panel_h // 6)
+            cx = 64 + int(width * 0.19)
+            circles = card.get("circles", [])
+            gap = (panel_h - r * 2) // 2 if len(circles) > 1 else 0
+            for j, (l1, l2) in enumerate(circles[:3]):
+                cy = top + r + j * max(gap, int(r * 2.2))
+                _promo_circle(img, cx, cy, r, l1, l2)
+            draw = ImageDraw.Draw(img)
+
+        # 노란 스티커 (사진 오른쪽 아래)
+        if card.get("tag"):
+            f_tag = _font(34, 800)
+            tw = f_tag.getlength(card["tag"]) + 76
+            tx = px + panel_w - tw + 20
+            ty = top + panel_h - 46
+            draw.rounded_rectangle([tx, ty, tx + tw, ty + 78], radius=24,
+                                   fill=_PROMO["yellow"],
+                                   outline=(255, 255, 255), width=4)
+            draw.text((tx + 38, ty + 17), card["tag"], font=f_tag, fill=_PROMO["purple_deep"])
+
+        _promo_footer(img, link_no)
+
+        path = out_dir / f"card_{i + 1}.png"
+        img.convert("RGB").save(path, "PNG")
+        paths.append(path)
+
+    return paths
+
+
 def render_cards(
     copy_data: dict,
     out_dir: str | Path,
