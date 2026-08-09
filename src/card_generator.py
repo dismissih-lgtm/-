@@ -247,9 +247,23 @@ def _fit_image(photo: Image.Image, w: int, h: int) -> Image.Image:
 
 
 def _paste_rounded(base: Image.Image, photo: Image.Image, x: int, y: int,
-                   w: int, h: int, radius: int = 28) -> None:
-    """둥근 모서리로 사진을 붙입니다."""
-    fitted = _fit_image(photo.convert("RGB"), w, h)
+                   w: int, h: int, radius: int = 28, fit: str = "cover",
+                   bg: tuple = (255, 255, 255)) -> None:
+    """둥근 모서리로 사진을 붙입니다.
+
+    fit="cover"  : 프레임을 사진으로 꽉 채움 (사진 가장자리가 잘릴 수 있음)
+    fit="contain": 흰 배경 위에 사진 전체가 보이게 넣음 (상품 사진에 적합)
+    """
+    if fit == "cover":
+        fitted = _fit_image(photo.convert("RGB"), w, h)
+    else:
+        panel = Image.new("RGB", (w, h), bg)
+        scale = min(w / photo.width, h / photo.height)
+        nw = max(1, int(photo.width * scale))
+        nh = max(1, int(photo.height * scale))
+        resized = photo.convert("RGB").resize((nw, nh), Image.LANCZOS)
+        panel.paste(resized, ((w - nw) // 2, (h - nh) // 2))
+        fitted = panel
     mask = Image.new("L", (w, h), 0)
     ImageDraw.Draw(mask).rounded_rectangle([0, 0, w - 1, h - 1], radius=radius, fill=255)
     base.paste(fitted, (x, y), mask)
@@ -315,12 +329,17 @@ def _render_cover(img, theme, cover, index, total, photo=None):
         # 사진이 있으면: 배지 → 상품 사진 → 헤드라인 → 보조 문장
         badge_bottom = _draw_badge(draw, theme, cover["badge"], _MARGIN, 78)
         photo_h = int(height * 0.38)
-        _paste_rounded(img, photo, _MARGIN, badge_bottom + 34, max_w, photo_h)
+        # 프레임 폭은 사진 비율에 맞춰 조절 (세로형 사진도 잘리지 않게)
+        aspect = photo.width / photo.height
+        frame_w = min(max_w, max(int(photo_h * aspect), int(photo_h * 0.85)))
+        _paste_rounded(img, photo, (width - frame_w) // 2, badge_bottom + 34,
+                       frame_w, photo_h, fit="contain")
         draw = ImageDraw.Draw(img)  # paste 이후 다시 획득
 
         y = badge_bottom + 34 + photo_h + 46
-        y = _draw_wrapped(draw, _font(60, 800), cover["headline"], _MARGIN, y, max_w,
-                          theme["text"], line_gap=1.22, max_lines=3)
+        max_lines = 2 if height <= 1100 else 3
+        y = _draw_wrapped(draw, _font(58, 800), cover["headline"], _MARGIN, y, max_w,
+                          theme["text"], line_gap=1.22, max_lines=max_lines)
         y += 18
         _draw_wrapped(draw, _font(37, 400), cover["sub"], _MARGIN, y, max_w,
                       theme["sub"], max_lines=2)
@@ -375,9 +394,10 @@ def _render_cta(img, theme, cta, index, total, photo=None):
     max_w = width - _MARGIN * 2
 
     if photo is not None:
-        # 정사각 상품 사진을 상단 중앙에 배치
+        # 정사각 상품 사진을 상단 중앙에 배치 (전체가 보이게)
         ph = int(height * 0.26)
-        _paste_rounded(img, photo, (width - ph) // 2, int(height * 0.09), ph, ph)
+        _paste_rounded(img, photo, (width - ph) // 2, int(height * 0.09), ph, ph,
+                       fit="contain")
         draw = ImageDraw.Draw(img)
         y = int(height * 0.09) + ph + 50
         title_font = _font(62, 800)
